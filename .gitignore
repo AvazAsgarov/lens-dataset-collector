@@ -1,0 +1,11 @@
+# References and temporary files
+lens-detection-ref/
+__pycache__/
+*.py[cod]
+.venv/
+env/
+.env
+
+# OS files
+Thumbs.db
+.DS_Store
