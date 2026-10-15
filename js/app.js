@@ -7,7 +7,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   const canvasEl = document.getElementById("overlay-canvas");
   const flashEl = document.getElementById("flash-effect");
   const cameraSelect = document.getElementById("camera-select");
-  const nameInput = document.getElementById("collector-name");
+
+  const folderSelect = document.getElementById("user-folder-select");
+  const btnRefreshFolders = document.getElementById("btn-refresh-folders");
+  const newNameInput = document.getElementById("new-collector-name");
+
   const intervalSlider = document.getElementById("interval-slider");
   const intervalVal = document.getElementById("interval-val");
   const mirrorToggle = document.getElementById("mirror-toggle");
@@ -44,12 +48,82 @@ document.addEventListener("DOMContentLoaded", async () => {
   const guidance = new GuidanceSystem(canvasEl, videoEl);
   const uploader = new DriveUploader();
 
-  // Load Saved Name
-  const savedName = localStorage.getItem("lens_collector_name") || "";
-  if (savedName) nameInput.value = savedName;
-  nameInput.addEventListener("input", () => {
-    localStorage.setItem("lens_collector_name", nameInput.value.trim());
+  // Helper: Get currently active user / folder name
+  function getActiveUserName() {
+    if (folderSelect.value === "__NEW__") {
+      return newNameInput.value.trim();
+    }
+    return folderSelect.value ? folderSelect.value.trim() : "";
+  }
+
+  // Load and populate Google Drive folders
+  async function loadFolders() {
+    btnRefreshFolders.classList.add("animate-spin");
+    folderSelect.innerHTML = `<option value="" disabled selected>Qovluqlar yoxlanılır...</option>`;
+
+    const savedName = localStorage.getItem("lens_collector_name") || "";
+    const folders = await uploader.fetchFolders();
+
+    folderSelect.innerHTML = "";
+
+    // Default placeholder
+    const defaultOpt = document.createElement("option");
+    defaultOpt.value = "";
+    defaultOpt.disabled = true;
+    defaultOpt.textContent = "-- Adınızı / Qovluğu seçin --";
+    folderSelect.appendChild(defaultOpt);
+
+    let matchFound = false;
+
+    // Add existing folders from Drive
+    folders.forEach((f) => {
+      const opt = document.createElement("option");
+      opt.value = f.name;
+      opt.textContent = `📁 ${f.name}`;
+      if (savedName && f.name.toLowerCase() === savedName.toLowerCase()) {
+        opt.selected = true;
+        matchFound = true;
+      }
+      folderSelect.appendChild(opt);
+    });
+
+    // Add "New user" option at bottom
+    const newOpt = document.createElement("option");
+    newOpt.value = "__NEW__";
+    newOpt.textContent = "➕ Yeni əməkdaş əlavə et...";
+    folderSelect.appendChild(newOpt);
+
+    if (matchFound) {
+      newNameInput.classList.add("hidden");
+    } else if (savedName) {
+      // Saved name exists locally but not in Drive yet
+      folderSelect.value = "__NEW__";
+      newNameInput.value = savedName;
+      newNameInput.classList.remove("hidden");
+    } else {
+      defaultOpt.selected = true;
+      newNameInput.classList.add("hidden");
+    }
+
+    btnRefreshFolders.classList.remove("animate-spin");
+  }
+
+  // Folder dropdown change handler
+  folderSelect.addEventListener("change", () => {
+    if (folderSelect.value === "__NEW__") {
+      newNameInput.classList.remove("hidden");
+      newNameInput.focus();
+    } else {
+      newNameInput.classList.add("hidden");
+      localStorage.setItem("lens_collector_name", folderSelect.value);
+    }
   });
+
+  newNameInput.addEventListener("input", () => {
+    localStorage.setItem("lens_collector_name", newNameInput.value.trim());
+  });
+
+  btnRefreshFolders.addEventListener("click", loadFolders);
 
   // Sound Synthesizer (Shutter Click) via Web Audio API
   let audioCtx = null;
@@ -84,7 +158,17 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Capture Single Frame
   function captureFrame() {
-    const userName = nameInput.value.trim() || "User";
+    const userName = getActiveUserName();
+    if (!userName) {
+      alert("Zəhmət olmasa əvvəlcə adınızı və ya qovluğu seçin!");
+      if (folderSelect.value === "__NEW__") {
+        newNameInput.focus();
+      } else {
+        folderSelect.focus();
+      }
+      return;
+    }
+
     const imageBase64 = camera.captureCleanFrame();
     if (!imageBase64) return;
 
@@ -133,9 +217,14 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Auto-capture Loop
   function startAutoCapture() {
-    if (!nameInput.value.trim()) {
-      alert("Zəhmət olmasa əvvəlcə adınızı qeyd edin!");
-      nameInput.focus();
+    const userName = getActiveUserName();
+    if (!userName) {
+      alert("Zəhmət olmasa əvvəlcə adınızı və ya qovluğu seçin!");
+      if (folderSelect.value === "__NEW__") {
+        newNameInput.focus();
+      } else {
+        folderSelect.focus();
+      }
       return;
     }
     isAutoRunning = true;
@@ -233,11 +322,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Controls click
   btnToggleAuto.addEventListener("click", toggleAutoCapture);
   btnSnap.addEventListener("click", () => {
-    if (!nameInput.value.trim()) {
-      alert("Zəhmət olmasa adınızı yazın!");
-      nameInput.focus();
-      return;
-    }
     captureFrame();
   });
 
@@ -303,7 +387,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     requestAnimationFrame(animationLoop);
   }
 
-  // Start Camera and UI
+  // Start Camera, Folder List, and UI
   try {
     await camera.startCamera();
     const devices = await camera.getDevices();
@@ -316,6 +400,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     updateScenarioUI();
     updateStatusUI();
+    loadFolders(); // Fetch existing Drive folders
     requestAnimationFrame(animationLoop);
   } catch (err) {
     alert("Kameraya çıxış əldə olunmadı. Zəhmət olmasa brauzerdə kamera icazəsi verin!");

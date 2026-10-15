@@ -1,6 +1,7 @@
 /**
  * Drive Uploader Module
- * Manages asynchronous upload queue to Google Drive via the Google Apps Script Web App.
+ * Manages asynchronous upload queue to Google Drive via Google Apps Script Web App.
+ * Also fetches existing folders so users can pick without creating duplicates.
  */
 class DriveUploader {
   constructor(endpointUrl) {
@@ -13,13 +14,30 @@ class DriveUploader {
     this.uploadedCount = 0;
     this.failedCount = 0;
     this.recentUploads = [];
+    this.existingFolders = [];
 
     this.onProgress = null; // Callback: (stats, recent) => {}
   }
 
+  async fetchFolders() {
+    try {
+      const response = await fetch(this.endpoint);
+      if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+      const data = await response.json();
+      if (data.status === "ok" && Array.isArray(data.folders)) {
+        this.existingFolders = data.folders;
+        return this.existingFolders;
+      }
+      return [];
+    } catch (err) {
+      console.warn("[Drive Uploader] Qovluqlar çəkilə bilmədi:", err);
+      return [];
+    }
+  }
+
   enqueue(userName, imageBase64, customFileName = null) {
     const timestamp = Date.now();
-    const safeName = (userName || "User").replace(/[^a-zA-Z0-9_-]/g, "_");
+    const safeName = (userName || "User").trim().replace(/[^a-zA-Z0-9_\-]/g, "_");
     const fileName =
       customFileName || `${safeName}_${timestamp}_${Math.floor(Math.random() * 1000)}.jpg`;
 
@@ -97,14 +115,12 @@ class DriveUploader {
         this.queue.shift(); // Drop after 3 attempts
       } else {
         item.status = "pending";
-        // Wait 2 seconds before retry
         await new Promise((r) => setTimeout(r, 2000));
       }
     } finally {
       this.isUploading = false;
       this.notifyProgress();
 
-      // Continue queue
       if (this.queue.length > 0) {
         setTimeout(() => this.processQueue(), 200);
       }
