@@ -2,19 +2,34 @@
 
 Bu layihə kompüter görməsi (computer vision) və obyekt aşkarlama (YOLO / Lens Detection) modelləri üçün telefon və linza datasetinin şirkət əməkdaşları tərəfindən rahat toplanması üçün hazırlanmış veb platformadır.
 
-Çəkilən bütün şəkillər avtomatik olaraq mərkəzi **Google Drive** qovluğunda istifadəçinin adına uyğun qovluq açılaraq ora sinxronlaşdırılır.
+Çəkilən bütün şəkillər avtomatik olaraq mərkəzi **Google Drive** qovluğunda istifadəçinin adına uyğun qovluq açılaraq (və ya mövcud qovluq seçilərək) ora sinxronlaşdırılır.
 
-🔗 **Hədəf Google Drive Qovluğu:** [Google Drive Folder (1PIz4lSXEC4cz7PRve9MRHmyTAh8n4wVR)](https://drive.google.com/drive/folders/1PIz4lSXEC4cz7PRve9MRHmyTAh8n4wVR?usp=sharing)
+* 🌐 **Canlı Veb Sayt (24/7 Açıqdır):** [https://avazasgarov.github.io/lens-dataset-collector/](https://avazasgarov.github.io/lens-dataset-collector/)
+* 📦 **GitHub Repozitoriyası:** [https://github.com/AvazAsgarov/lens-dataset-collector](https://github.com/AvazAsgarov/lens-dataset-collector)
+* 📁 **Hədəf Google Drive Qovluğu:** [Google Drive Folder (1PIz4lSXEC4cz7PRve9MRHmyTAh8n4wVR)](https://drive.google.com/drive/folders/1PIz4lSXEC4cz7PRve9MRHmyTAh8n4wVR?usp=sharing)
 
 ---
 
-## 🌟 Əsas Özəlliklər
+## 📚 Ətraflı Texniki Sənədləşmə (Docs)
+
+Layihəni təhvil alan başqa bir AI agent və ya proqramçı üçün `docs/` qovluğunda dərinləşdirilmiş sənədlər hazırlanmışdır:
+
+1. 🤝 **[docs/HANDOVER.md](docs/HANDOVER.md)**: AI və Mühəndis üçün tam Təhvil-Təslim sənədi, əsas etimadnamələr (credentials), unikal mühəndislik həlləri və növbəti addımlar.
+2. 🏗️ **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**: Sistemin Mermaid diaqramları, JavaScript modullarının strukturu, məlumat axını və lokal yaddaş sxemi.
+3. ☁️ **[docs/GOOGLE_DRIVE_INTEGRATION.md](docs/GOOGLE_DRIVE_INTEGRATION.md)**: Serverless Google Apps Script arxitekturası, kod izahı, CORS tənzimləməsi və təkrar yerləşdirmə (deploy) bələdçisi.
+4. 🎯 **[docs/DATASET_SPECIFICATION.md](docs/DATASET_SPECIFICATION.md)**: Kompüter görməsi təhlükə modeli, 5 addımlı bələdçi ssenariləri, işıqlandırma hədləri və YOLO təliminə ixrac qaydaları.
+5. 🚀 **[docs/DEPLOYMENT_AND_DEV.md](docs/DEPLOYMENT_AND_DEV.md)**: GitHub Pages, Vercel və lokal FastAPI mühitinin quraşdırılması, WebRTC HTTPS icazə qaydaları.
+
+---
+
+## 🌟 Əsas Xüsusiyyətlər
 
 1. **Sıfır Quraşdırma (Zero Setup):**
    - İstifadəçilər heç bir proqram və ya Python quraşdırmadan birbaşa brauzerdə linkə daxil olur.
-2. **Avtomatik Google Drive Sinxronizasiyası:**
-   - İstifadəçi adını yazır (məs: `Avaz`).
-   - Sistem Google Drive-da avtomatik `Avaz` qovluğu yaradır və hər şəkli həmin qovluğa yükləyir (`Avaz_timestamp_xxx.jpg`).
+2. **Qovluq Seçimi və Ağıllı Birləşdirmə (Deduplication):**
+   - Sayt Google Drive-dakı mövcud əməkdaş qovluqlarını çəkir və açılan siyahıda (dropdown) göstərir.
+   - Böyük/kiçik hərf fərqi aradan qaldırılıb (`mahammad` vs `Mahammad`); heç bir halda 2-ci dublikat qovluq yaranmır.
+   - Yeni istifadəçi üçün *"➕ Yeni əməkdaş əlavə et..."* imkanı mövcuddur.
 3. **Canlı İşıqlandırma Analizi (Live Lighting Quality):**
    - Real-vaxtda video axınından parlaqlıq (luminance) dərəcəsini ölçür:
      - ⚠️ *İşıq zəifdir* (Otaq işığını yandırmaq tövsiyə olunur).
@@ -36,16 +51,6 @@ Bu layihə kompüter görməsi (computer vision) və obyekt aşkarlama (YOLO / L
 
 ---
 
-## 🚀 Canlı Bulud Deployu (Cloud 24/7)
-
-Bu tətbiq tamamilə statik və bulud-dostu olduğu üçün kompüterinizi açıq saxlamağa ehtiyac yoxdur.
-Aşağıdakı xidmətlərdən istənilən birində 24/7 canlı yayımda işləyə bilər:
-
-- **GitHub Pages:** Repozitoriyaya hər dəfə kod göndərildikdə `.github/workflows/deploy.yml` vasitəsilə avtomatik deploy olunur.
-- **Vercel:** `vercel.json` faylı hazırdır; Vercel-ə GitHub repozitoriyasını bağlamaqla dərhal canlı link yaranır.
-
----
-
 ## 💻 Kompüterdə Lokal İşə Salma (İstəyə görə)
 
 1. `RUN_Web_App.bat` faylına iki dəfə klikləyin.
@@ -64,6 +69,13 @@ Aşağıdakı xidmətlərdən istənilən birində 24/7 canlı yayımda işləy�
 │   ├── guidance.js              # İşıq analizi və bələdçi ssenariləri
 │   ├── uploader.js              # Asinxron Google Drive yükləyici
 │   └── app.js                   # Əsas dövrə və qısa yollar
+├── docs/                        # Tam texniki sənədləşmə toplusu
+│   ├── HANDOVER.md              # AI & Dev Təhvil-təslim sənədi
+│   ├── ARCHITECTURE.md          # Memarlıq və modullar
+│   ├── GOOGLE_DRIVE_INTEGRATION.md # Drive API və GAS bələdçisi
+│   ├── DATASET_SPECIFICATION.md # Kompüter görməsi və dataset qaydaları
+│   └── DEPLOYMENT_AND_DEV.md    # Cloud və Lokal deploy təlimatı
+├── google_drive_script.js       # Google Apps Script kodu
 ├── server.py                    # Lokal FastAPI serveri
 ├── requirements.txt             # Python asılılıqları
 ├── RUN_Web_App.bat              # İki kliklə işə salma bat faylı
