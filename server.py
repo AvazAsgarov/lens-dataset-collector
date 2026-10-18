@@ -1,69 +1,91 @@
 """
-Lens Detection Dataset Collector - Local Web Server
-Runs a local FastAPI server to host the static dataset collector application.
+Lens Dataset Collector - local web server.
+
+Serves the static app on http://localhost:8000 (browsers allow camera access only on
+localhost or HTTPS). Only index.html, css/ and js/ are exposed; the repository root is
+never served because it contains .git/ (and with it the remote URL / credentials).
 """
 
 import os
 import sys
+import threading
+import time
 import webbrowser
 from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 BASE_DIR = Path(__file__).resolve().parent
+VERSION = "2.0.0"
 
-app = FastAPI(title="Lens Detection Dataset Collector", version="1.0.0")
-
-# Enable CORS for local testing
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+app = FastAPI(
+    title="Lens Dataset Collector",
+    version=VERSION,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
-# Mount static subdirectories
-if (BASE_DIR / "css").is_dir():
-    app.mount("/css", StaticFiles(directory=str(BASE_DIR / "css")), name="css")
-if (BASE_DIR / "js").is_dir():
-    app.mount("/js", StaticFiles(directory=str(BASE_DIR / "js")), name="js")
-if (BASE_DIR / "assets").is_dir():
-    app.mount("/assets", StaticFiles(directory=str(BASE_DIR / "assets")), name="assets")
+for folder in ("css", "js"):
+    if (BASE_DIR / folder).is_dir():
+        app.mount(f"/{folder}", StaticFiles(directory=BASE_DIR / folder), name=folder)
 
 
-@app.get("/")
+@app.get("/", include_in_schema=False)
 async def serve_index():
-    return FileResponse(str(BASE_DIR / "index.html"))
+    return FileResponse(BASE_DIR / "index.html", headers={"Cache-Control": "no-cache"})
 
 
-@app.get("/health")
+@app.get("/health", include_in_schema=False)
 async def health_check():
-    return {"status": "ok", "app": "Lens Detection Dataset Collector"}
+    return {"status": "ok", "app": "Lens Dataset Collector", "version": VERSION}
+
+
+def _use_utf8_console():
+    # A non-UTF-8 Windows console must not crash the server on Azerbaijani text.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
 
 
 def main():
-    port = int(os.environ.get("PORT", 8000))
+    _use_utf8_console()
+
     host = os.environ.get("HOST", "127.0.0.1")
-    url = f"http://{host}:{port}"
+    port = int(os.environ.get("PORT", "8000"))
+    browser_host = "localhost" if host in ("127.0.0.1", "0.0.0.0", "::") else host
+    url = f"http://{browser_host}:{port}"
+
+    server = uvicorn.Server(uvicorn.Config(app, host=host, port=port, log_level="info"))
+
+    def open_browser_when_ready():
+        for _ in range(150):
+            if server.started:
+                try:
+                    webbrowser.open(url)
+                except Exception:
+                    pass
+                return
+            if server.should_exit:
+                return
+            time.sleep(0.1)
 
     print("=" * 60)
-    print("  LENS DETECTION - DATASET COLLECTOR WEB SERVER")
+    print("  LENS DATASET COLLECTOR - lokal veb server")
     print("=" * 60)
-    print(f"  Veb sayt hazırdır: {url}")
-    print("  Brauzer avtomatik açılır...")
+    print(f"  Ünvan: {url}")
+    print("  Server hazır olanda brauzer avtomatik açılacaq.")
+    print("  Dayandırmaq üçün: Ctrl+C")
     print("=" * 60)
 
-    try:
-        webbrowser.open(url)
-    except Exception:
-        pass
-
-    uvicorn.run("server:app", host=host, port=port, reload=False)
+    if os.environ.get("NO_BROWSER") != "1":
+        threading.Thread(target=open_browser_when_ready, daemon=True).start()
+    server.run()
 
 
 if __name__ == "__main__":

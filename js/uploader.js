@@ -1,152 +1,212 @@
 /**
- * Drive Uploader Module
- * Manages asynchronous upload queue to Google Drive via Google Apps Script Web App.
- * Also fetches existing folders so users can pick without creating duplicates.
+ * Drive uploader — background upload queue to the Google Apps Script web app,
+ * plus the Drive folder tree (people → classes) used for suggestions.
+ *
+ * Requests use Content-Type text/plain so the browser skips the CORS preflight,
+ * which Apps Script web apps do not answer.
  */
 class DriveUploader {
-  constructor(endpointUrl) {
-    this.endpoint =
-      endpointUrl ||
-      "https://script.google.com/macros/s/AKfycbyFU3KixOVpS9I3Iz1w_PiV47tRwiernHbNyOuYSBSo_yILrw_ce6YmDssAfGUlhUak/exec";
+  constructor(endpoint, options = {}) {
+    this.endpoint = endpoint;
+    this.concurrency = options.concurrency || 2;
+    this.maxAttempts = options.maxAttempts || 5;
+    this.maxRecent = options.maxRecent || 12;
+    this.timeoutMs = options.timeoutMs || 60000;
 
-    this.queue = [];
-    this.isUploading = false;
-    this.uploadedCount = 0;
-    this.failedCount = 0;
-    this.recentUploads = [];
-    this.existingFolders = [];
+    this.queue = []; // items not yet uploaded (pending, uploading, failed)
+    this.recent = []; // newest first, for the UI
+    this.active = 0;
+    this.uploaded = 0;
+    this.timer = null;
+    this.onChange = null; // (uploader) => void
 
-    this.onProgress = null; // Callback: (stats, recent) => {}
+    window.addEventListener("online", () => this.pump());
   }
 
-  async fetchFolders() {
-    try {
-      const response = await fetch(this.endpoint);
-      if (!response.ok) throw new Error(`HTTP error ${response.status}`);
-      const data = await response.json();
-      if (data.status === "ok" && Array.isArray(data.folders)) {
-        this.existingFolders = data.folders;
-        return this.existingFolders;
-      }
-      return [];
-    } catch (err) {
-      console.warn("[Drive Uploader] Qovluqlar çəkilə bilmədi:", err);
-      return [];
+  /* ---------- Folder tree ---------- */
+
+  async fetchTree({ fresh = false } = {}) {
+    const url = new URL(this.endpoint);
+    url.searchParams.set("action", "tree");
+    if (fresh) url.searchParams.set("fresh", "1");
+
+    const data = await this.request(url.toString(), { method: "GET" }, 25000);
+    if (data.status !== "ok") throw new Error(data.message || "Drive cavabı uğursuzdur");
+
+    if (Array.isArray(data.users)) {
+      return {
+        version: Number(data.version) || 2,
+        users: data.users.map((u) => ({
+          name: String(u.name),
+          classes: Array.isArray(u.classes) ? u.classes.map((c) => String(c.name)) : [],
+        })),
+      };
     }
+    // API v1 backend: only top-level folders.
+    if (Array.isArray(data.folders)) {
+      return {
+        version: 1,
+        users: data.folders.map((f) => ({ name: String(f.name), classes: [] })),
+      };
+    }
+    throw new Error("Drive cavabının formatı tanınmadı");
   }
 
-  enqueue(userName, imageBase64, customFileName = null) {
-    const timestamp = Date.now();
-    const safeName = (userName || "User").trim().replace(/[^a-zA-Z0-9_\-]/g, "_");
-    const fileName =
-      customFileName || `${safeName}_${timestamp}_${Math.floor(Math.random() * 1000)}.jpg`;
+  /* ---------- Queue ---------- */
 
+  get pendingCount() {
+    return this.queue.filter((i) => i.status === "pending" || i.status === "uploading").length;
+  }
+
+  get failedCount() {
+    return this.queue.filter((i) => i.status === "failed").length;
+  }
+
+  // Everything still held in memory that is not on Drive yet.
+  get backlog() {
+    return this.queue.length;
+  }
+
+  enqueue({ userName, className, fileName, image, thumb, meta }) {
     const item = {
-      id: "upl_" + timestamp + "_" + Math.random().toString(36).substr(2, 6),
-      userName: safeName,
+      id: `upl_${Date.now().toString(36)}_${LensUtils.randomId(6)}`,
       fileName,
-      image: imageBase64,
-      timestamp,
-      status: "pending", // 'pending' | 'uploading' | 'success' | 'failed'
-      retries: 0,
+      userName,
+      className,
+      thumb,
+      createdAt: new Date(),
+      status: "pending", // pending | uploading | success | failed
+      attempts: 0,
+      retryAt: 0,
+      error: "",
+      fileId: null,
+      payload: { v: 2, userName, className, fileName, image, meta },
     };
 
     this.queue.push(item);
-    this.recentUploads.unshift({
-      id: item.id,
-      fileName: item.fileName,
-      thumb: item.image,
-      status: "pending",
-      time: new Date(timestamp).toLocaleTimeString(),
-    });
+    this.recent.unshift(item);
+    if (this.recent.length > this.maxRecent) this.recent.length = this.maxRecent;
 
-    if (this.recentUploads.length > 8) {
-      this.recentUploads.pop();
-    }
-
-    this.notifyProgress();
-    this.processQueue();
+    this.emit();
+    this.pump();
     return item;
   }
 
-  async processQueue() {
-    if (this.isUploading || this.queue.length === 0) return;
+  retry(id) {
+    const item = this.queue.find((i) => i.id === id && i.status === "failed");
+    if (!item) return;
+    item.status = "pending";
+    item.attempts = 0;
+    item.retryAt = 0;
+    item.error = "";
+    this.emit();
+    this.pump();
+  }
 
-    this.isUploading = true;
-    const item = this.queue[0];
+  retryAllFailed() {
+    this.queue.forEach((item) => {
+      if (item.status !== "failed") return;
+      item.status = "pending";
+      item.attempts = 0;
+      item.retryAt = 0;
+      item.error = "";
+    });
+    this.emit();
+    this.pump();
+  }
+
+  pump() {
+    clearTimeout(this.timer);
+    this.timer = null;
+    if (navigator.onLine === false) {
+      this.emit();
+      return;
+    }
+
+    const now = Date.now();
+    let nextDue = Infinity;
+    for (const item of this.queue) {
+      if (this.active >= this.concurrency) break;
+      if (item.status !== "pending") continue;
+      if (item.retryAt > now) {
+        nextDue = Math.min(nextDue, item.retryAt);
+        continue;
+      }
+      this.upload(item);
+    }
+    if (nextDue !== Infinity) {
+      this.timer = setTimeout(() => this.pump(), Math.max(50, nextDue - now + 20));
+    }
+  }
+
+  async upload(item) {
+    this.active++;
     item.status = "uploading";
-    this.updateRecentStatus(item.id, "uploading");
-    this.notifyProgress();
+    item.attempts++;
+    this.emit();
 
     try {
-      const payload = JSON.stringify({
-        userName: item.userName,
-        fileName: item.fileName,
-        image: item.image,
-      });
+      const res = await this.request(
+        this.endpoint,
+        {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify(item.payload),
+        },
+        this.timeoutMs
+      );
+      if (res.status !== "success") throw new Error(res.message || "Drive xətası");
 
-      // text/plain prevents CORS preflight OPTIONS which Google Apps Script rejects
-      const response = await fetch(this.endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: payload,
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP xətası: ${response.status}`);
-      }
-
-      const resData = await response.json();
-      if (resData.status === "success") {
-        item.status = "success";
-        this.uploadedCount++;
-        this.updateRecentStatus(item.id, "success", resData.fileId);
-        this.queue.shift(); // Remove from queue
-      } else {
-        throw new Error(resData.message || "Bilinməyən Drive xətası");
-      }
+      item.status = "success";
+      item.fileId = res.fileId || null;
+      item.error = "";
+      item.payload = null; // free the full-size image
+      this.queue = this.queue.filter((q) => q !== item);
+      this.uploaded++;
     } catch (err) {
-      console.warn(`[Drive Uploader] Yükləmə xətası (${item.fileName}):`, err);
-      item.retries++;
-      if (item.retries >= 3) {
+      item.error = err && err.message ? err.message : String(err);
+      if (navigator.onLine === false) {
+        // Offline is not the server's fault — wait for the "online" event without burning attempts.
+        item.attempts = Math.max(0, item.attempts - 1);
+        item.status = "pending";
+        item.retryAt = 0;
+      } else if (item.attempts >= this.maxAttempts) {
         item.status = "failed";
-        this.failedCount++;
-        this.updateRecentStatus(item.id, "failed");
-        this.queue.shift(); // Drop after 3 attempts
+        console.warn(`[uploader] ${item.fileName} failed after ${item.attempts} attempts:`, item.error);
       } else {
         item.status = "pending";
-        await new Promise((r) => setTimeout(r, 2000));
+        item.retryAt = Date.now() + Math.min(30000, 2000 * 2 ** (item.attempts - 1));
       }
     } finally {
-      this.isUploading = false;
-      this.notifyProgress();
+      this.active--;
+      this.emit();
+      this.pump();
+    }
+  }
 
-      if (this.queue.length > 0) {
-        setTimeout(() => this.processQueue(), 200);
+  async request(url, init, timeoutMs) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { ...init, redirect: "follow", signal: controller.signal });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const text = await response.text();
+      try {
+        return JSON.parse(text);
+      } catch (err) {
+        throw new Error("Serverdən gözlənilməz cavab gəldi");
       }
+    } catch (err) {
+      if (err && err.name === "AbortError") throw new Error("Server vaxtında cavab vermədi");
+      if (err instanceof TypeError) throw new Error("Şəbəkə xətası");
+      throw err;
+    } finally {
+      clearTimeout(timer);
     }
   }
 
-  updateRecentStatus(id, status, fileId = null) {
-    const found = this.recentUploads.find((r) => r.id === id);
-    if (found) {
-      found.status = status;
-      if (fileId) found.fileId = fileId;
-    }
-  }
-
-  notifyProgress() {
-    if (typeof this.onProgress === "function") {
-      this.onProgress(
-        {
-          queueLength: this.queue.length,
-          uploaded: this.uploadedCount,
-          failed: this.failedCount,
-          isUploading: this.isUploading,
-        },
-        this.recentUploads
-      );
-    }
+  emit() {
+    if (typeof this.onChange === "function") this.onChange(this);
   }
 }
 

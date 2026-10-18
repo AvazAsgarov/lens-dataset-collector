@@ -9,3 +9,6 @@ env/
 # OS files
 Thumbs.db
 .DS_Store
+
+# Local tooling
+.claude/

@@ -1,171 +1,109 @@
-# Google Drive Integration & Google Apps Script Backend
+# Google Drive Integration (Apps Script backend, API v2)
 
-This guide details the serverless Google Drive integration powering the Lens Detection Dataset Collection platform.
+The backend is a Google Apps Script web app that runs **as the owner of the `Lens_Dataset` folder**. Collectors do not sign in to Google; the browser posts frames to the web app and the script writes them to Drive.
 
----
-
-## 1. Why Google Apps Script (GAS)?
-
-Traditional Google Drive integrations for web applications require one of two complex architectures:
-1. **Google Cloud Service Account:** Requires GCP Console project creation, OAuth credentials, service account key rotation, and an active backend server (Node.js/Python) to proxy uploads.
-2. **Client-Side OAuth 2.0:** Requires every employee to authenticate with their own Google account, grant Drive permissions, and handle token refreshes.
-
-**The Google Apps Script Solution:**
-By deploying a Google Apps Script as an authenticated Web App:
-- **Zero Server Costs:** Google's infrastructure hosts and runs the backend 24/7 for free.
-- **Zero Friction:** End users do **not** log into Google; the script executes under the project owner's authorization (`Execute as: Me`).
-- **Direct Drive API Access:** Native `DriveApp` classes interact directly with Google Drive without external API keys or rate-limit tokens.
+The source of truth is [`google_drive_script.js`](../google_drive_script.js) in this repository. The deployed copy lives in the Apps Script project "Untitled project" in the AI Factory Google account.
 
 ---
 
-## 2. Complete Script Code (`google_drive_script.js`)
+## 1. Why Apps Script
 
-```javascript
-/**
- * Google Apps Script - Lens Detection Drive Backend
- * Target Folder: https://drive.google.com/drive/folders/1PIz4lSXEC4cz7PRve9MRHmyTAh8n4wVR
- */
+- No server or GCP project to maintain. Google hosts and runs it for free.
+- No end-user OAuth. The deployment uses *Execute as: Me* and *Who has access: Anyone*.
+- Native `DriveApp`, `LockService` and `CacheService`.
 
-function doGet(e) {
-  try {
-    var parentFolderId = "1PIz4lSXEC4cz7PRve9MRHmyTAh8n4wVR";
-    var parentFolder = DriveApp.getFolderById(parentFolderId);
-    
-    // Fetch existing employee subfolders
-    var folders = [];
-    var folderIterator = parentFolder.getFolders();
-    while (folderIterator.hasNext()) {
-      var f = folderIterator.next();
-      folders.push({
-        id: f.getId(),
-        name: f.getName()
-      });
-    }
-    
-    // Sort alphabetically
-    folders.sort(function(a, b) {
-      return a.name.localeCompare(b.name);
-    });
-    
-    return ContentService.createTextOutput(JSON.stringify({
-      status: "ok",
-      folders: folders
-    })).setMimeType(ContentService.MimeType.JSON);
-    
-  } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({
-      status: "error",
-      message: err.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
-  }
-}
+Trade-off: the `/exec` URL is public. The script therefore validates everything it receives (see §4).
 
-function doPost(e) {
-  try {
-    var data = JSON.parse(e.postData.contents);
-    var parentFolderId = "1PIz4lSXEC4cz7PRve9MRHmyTAh8n4wVR";
-    var parentFolder = DriveApp.getFolderById(parentFolderId);
-    
-    var rawName = (data.userName || "anonymous").trim();
-    var targetLower = rawName.toLowerCase();
-    
-    // Case-insensitive search to prevent duplicate folders
-    var userFolder = null;
-    var folderIterator = parentFolder.getFolders();
-    while (folderIterator.hasNext()) {
-      var f = folderIterator.next();
-      if (f.getName().toLowerCase() === targetLower) {
-        userFolder = f;
-        break;
-      }
-    }
-    
-    // Create new folder only if it doesn't already exist
-    if (!userFolder) {
-      userFolder = parentFolder.createFolder(rawName);
-    }
-    
-    // Convert base64 data to JPEG blob
-    var imageBase64 = data.image;
-    if (imageBase64.indexOf(",") > -1) {
-      imageBase64 = imageBase64.split(",")[1];
-    }
-    
-    var decoded = Utilities.base64Decode(imageBase64);
-    var fileName = data.fileName || (userFolder.getName() + "_" + new Date().getTime() + ".jpg");
-    var blob = Utilities.newBlob(decoded, "image/jpeg", fileName);
-    
-    var file = userFolder.createFile(blob);
-    
-    return ContentService.createTextOutput(JSON.stringify({
-      status: "success",
-      fileId: file.getId(),
-      fileName: fileName,
-      folderId: userFolder.getId(),
-      folderName: userFolder.getName()
-    })).setMimeType(ContentService.MimeType.JSON);
-    
-  } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({
-      status: "error",
-      message: err.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
-  }
-}
+---
+
+## 2. Drive layout
+
+```
+Lens_Dataset/                         (ROOT_FOLDER_ID = 1PIz4lSXEC4cz7PRve9MRHmyTAh8n4wVR)
+└── <Name>/                           e.g. Leyla
+    ├── <class>/                      e.g. mouse  (lowercase, spaces → _)
+    │   └── <class>_<Name>_<YYYYMMDD-HHMMSS-mmm>_<rand4>.jpg
+    └── <older v1 files>.jpg          (v1 uploads had no class folder)
 ```
 
----
+Each file's **description** holds JSON metadata:
 
-## 3. How to Deploy or Update the Script
-
-If you ever need to update the logic or change the root folder ID:
-
-1. Open [script.google.com](https://script.google.com) and open the project.
-2. Paste the updated code into the editor.
-3. Click the blue **Deploy** button (top right) ➔ **Manage deployments**.
-4. Click the **Edit (pencil ✏️)** icon.
-5. In the **Version** dropdown, select **"New version"**.
-6. Ensure settings are:
-   - **Execute as:** `Me (your-email@gmail.com)`
-   - **Who has access:** `Anyone` *(Crucial: allows anonymous upload without requiring end-user login)*
-7. Click **Deploy**.
-
----
-
-## 4. Testing & Verification
-
-### Test 1: Fetch Existing Folders (GET)
-```bash
-curl -s -L "https://script.google.com/macros/s/AKfycbyFU3KixOVpS9I3Iz1w_PiV47tRwiernHbNyOuYSBSo_yILrw_ce6YmDssAfGUlhUak/exec"
-```
-**Expected Response:**
 ```json
-{
-  "status": "ok",
-  "folders": [
-    { "id": "1CEyHPv63I9wl_g8dYnv1bGunE2SMx2XC", "name": "Avaz" },
-    { "id": "1pqGsL_BtUl1XvscG5AgVldmvdogNQUQ_", "name": "Mahammad" }
-  ]
-}
+{"user":"Leyla","class":"mouse","uploadedAt":"2026-10-18T12:48:04.010Z","capturedAt":"2026-10-18T12:48:03.123Z","scenario":2,"mode":"wizard","mirror":true,"width":1280,"height":720,"camera":"Integrated Webcam","luminance":132,"app":"web-2.0"}
 ```
 
-### Test 2: Upload Image (POST)
+---
+
+## 3. Endpoints
+
+| Request | Response |
+|---|---|
+| `GET /exec?action=ping` | `{"status":"ok","version":2}` |
+| `GET /exec?action=tree` | Person and class folder tree, cached for 60 s (add `&fresh=1` to bypass the cache) |
+| `POST /exec` with a `text/plain` JSON body | Saves the image. See the payload in [ARCHITECTURE.md](ARCHITECTURE.md#4-data-schemas) |
+
+The client must send `Content-Type: text/plain;charset=utf-8`. Apps Script does not answer CORS preflight requests, so `application/json` would be blocked by the browser.
+
+---
+
+## 4. Safety rules enforced by the script
+
+| Rule | Where |
+|---|---|
+| Only JPEG data (`FF D8 FF` signature), max 10 MB | `decodeJpeg_` |
+| Names: no `/`, `\` or control characters, collapsed whitespace, max 60 characters | `cleanName_`, `cleanClass_` |
+| File names: unsafe characters replaced, `.jpg` enforced, max 150 characters | `cleanFileName_` |
+| Case-insensitive find-or-create; trashed folders ignored; oldest duplicate wins | `findOrCreateFolder_`, `findChildFolder_` |
+| Concurrent first uploads cannot create duplicate folders | `LockService.getScriptLock()` |
+| A retried upload with the same file name does not create a duplicate | `getFilesByName` check in `doPost` |
+| At most 200 new folders per hour | `countFolderCreation_` |
+| Only whitelisted metadata keys are stored | `buildMeta_` |
+
+---
+
+## 5. Updating the deployment
+
+1. Open the Apps Script project. In the owner's Chrome profile the AI Factory account is `authuser=2`: <https://script.google.com/u/2/home>.
+2. Replace the contents of `Code.gs` with `google_drive_script.js` from this repository and save (Ctrl+S).
+3. **Deploy → Manage deployments → ✏️ Edit**.
+4. **Version → New version**, and add a short description.
+5. Keep **Execute as: Me** and **Who has access: Anyone**.
+6. **Deploy**. The deployment ID and the `/exec` URL do not change, so the website needs no update.
+
+Rolling back: in the same dialog, pick an earlier version and deploy it.
+
+If a future change adds a new Google service (for example `SpreadsheetApp`), Apps Script will ask the owner to authorise the new scope during deployment.
+
+---
+
+## 6. Testing
+
+Read-only checks, safe to run any time:
+
+```bash
+curl -sL "https://script.google.com/macros/s/AKfycbyFU3KixOVpS9I3Iz1w_PiV47tRwiernHbNyOuYSBSo_yILrw_ce6YmDssAfGUlhUak/exec?action=ping"
+curl -sL "https://script.google.com/macros/s/AKfycbyFU3KixOVpS9I3Iz1w_PiV47tRwiernHbNyOuYSBSo_yILrw_ce6YmDssAfGUlhUak/exec?action=tree&fresh=1"
+```
+
+A write test creates real files. Always use a throw-away name such as `_test` and move that folder to the Drive trash afterwards, so no test images end up in a real person's dataset:
+
 ```powershell
 $body = @{
-    userName = "Mahammad"
-    fileName = "test_image.jpg"
-    image = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA="
+  userName  = "_test"
+  className = "_e2e"
+  fileName  = "_e2e_test.jpg"
+  image     = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA="
 } | ConvertTo-Json
+Invoke-RestMethod -Method Post -ContentType "text/plain;charset=utf-8" -Body $body `
+  -Uri "https://script.google.com/macros/s/AKfycbyFU3KixOVpS9I3Iz1w_PiV47tRwiernHbNyOuYSBSo_yILrw_ce6YmDssAfGUlhUak/exec"
+```
 
-Invoke-RestMethod -Uri "https://script.google.com/macros/s/AKfycbyFU3KixOVpS9I3Iz1w_PiV47tRwiernHbNyOuYSBSo_yILrw_ce6YmDssAfGUlhUak/exec" -Method Post -Body $body -ContentType "text/plain;charset=utf-8"
-```
-**Expected Response:**
-```json
-{
-  "status": "success",
-  "fileId": "1z73PgSD3OT75bvbShseMvKZFZKaQ7C0D",
-  "fileName": "test_image.jpg",
-  "folderId": "1pqGsL_BtUl1XvscG5AgVldmvdogNQUQ_",
-  "folderName": "Mahammad"
-}
-```
+Expected: `status: success`, `path: _test/_e2e`.
+
+The backend logic can also be unit-tested offline by loading the script into Node with mocked `DriveApp`, `CacheService`, `LockService`, `Utilities`, `Session` and `ContentService` objects. That is how v2 was verified before deployment.
+
+---
+
+## 7. Known gotcha — multiple Google accounts
+
+Opening the `/exec` URL directly in a Chrome window signed in to several Google accounts can show *"Sorry, unable to open the file at this time"*. This is a Google session-cookie issue. `fetch()` and `curl` requests are not affected.

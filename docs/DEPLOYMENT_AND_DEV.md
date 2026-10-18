@@ -1,74 +1,64 @@
-# Deployment & Local Development Guide
-
-This guide covers all deployment options (Cloud & Local) and network requirements for running the Lens Detection Dataset Collection platform.
+# Deployment & Local Development
 
 ---
 
-## 1. Cloud Deployment (24/7 Serverless)
+## 1. Production: GitHub Pages
 
-### 1.1. GitHub Pages (Production Active)
-The application is currently live at:  
-👉 **[https://avazasgarov.github.io/lens-dataset-collector/](https://avazasgarov.github.io/lens-dataset-collector/)**
+Live at <https://avazasgarov.github.io/lens-dataset-collector/>.
 
-**How it works:**
-1. A GitHub Actions workflow (`.github/workflows/deploy.yml`) triggers on every push to the `main` branch.
-2. The workflow uploads the repository root and deploys directly to GitHub Pages.
-3. **HTTPS Enforcement:** GitHub Pages automatically provides an SSL certificate. This satisfies modern browser security policies that require HTTPS for camera (`navigator.mediaDevices.getUserMedia`) access.
+- Pages is configured as **Deploy from a branch → `main` / root** (the "legacy" build type). Every push to `main` triggers GitHub's built-in *pages build and deployment* run, and the site updates within about a minute.
+- `.nojekyll` turns off Jekyll processing, so files are served exactly as committed.
+- There is **no custom GitHub Actions workflow**. The previous `deploy.yml` failed on every push: Actions jobs cannot start while the account is locked by a billing issue, and the Pages source was never switched to "GitHub Actions" anyway. If Actions becomes available and you want a workflow-based deployment, switch *Settings → Pages → Source* to **GitHub Actions** first.
+- **Cache busting:** GitHub Pages caches files for about 10 minutes. On every release, bump the `?v=` query on the `<link>` and `<script>` tags in `index.html` so users never get a mix of old and new files.
+- HTTPS is enforced, which the camera API requires.
 
-### 1.2. Vercel Deployment
-The repository includes a root `vercel.json` configuration:
-```json
-{
-  "version": 2,
-  "name": "lens-dataset-collector",
-  "builds": [
-    {
-      "src": "*",
-      "use": "@vercel/static"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/$1"
-    }
-  ]
-}
-```
-To deploy to Vercel:
-1. Import the repository `https://github.com/AvazAsgarov/lens-dataset-collector` into Vercel.
-2. Click **Deploy**. Vercel will serve all static files instantly with automatic edge SSL.
+### Release checklist
+1. `node --check js/*.js google_drive_script.js` (syntax).
+2. Test locally (see §3) with a real webcam: name + class, single capture, auto capture, camera switching.
+3. Bump `?v=` in `index.html`.
+4. If `google_drive_script.js` changed, redeploy it as a new version (see [GOOGLE_DRIVE_INTEGRATION.md](GOOGLE_DRIVE_INTEGRATION.md#5-updating-the-deployment)).
+5. Push to `main`, then check the site and `…/exec?action=ping`.
 
 ---
 
-## 2. Local Development & Offline Running
+## 2. Optional: Vercel
 
-If the platform needs to run locally on an air-gapped or internal network:
+`vercel.json` adds `Permissions-Policy: camera=(self)` and `nosniff` headers. `.vercelignore` keeps `server.py`, `requirements.txt` and other non-site files out of the deployment, so Vercel serves the repository as a plain static site. Import the repository in Vercel and deploy; no build command is needed.
 
-### 2.1. One-Click Batch Launcher (`RUN_Web_App.bat`)
-Double-click `RUN_Web_App.bat` in the project root:
-1. Verifies Python 3.9+ availability.
-2. Installs dependencies from `requirements.txt` (`fastapi`, `uvicorn`).
-3. Launches `server.py` on `http://127.0.0.1:8000`.
-4. Automatically opens default browser to the web app.
+---
 
-### 2.2. Manual Python Execution
-```powershell
+## 3. Local run
+
+The local server is meant for development and for testing on one machine. The app still needs the internet to reach Google Apps Script and Google Fonts.
+
+### One click (Windows)
+Double-click `RUN_Web_App.bat`. It:
+1. Finds a working Python 3.9+ (`python`, then `py -3`). The Microsoft Store alias is not treated as Python.
+2. Installs `fastapi` and `uvicorn` from `requirements.txt`, and stops with a clear message if that fails.
+3. Starts `server.py` and opens `http://localhost:8000` once the server is ready.
+
+### Manual
+```bash
 pip install -r requirements.txt
 python server.py
 ```
 
+Environment variables: `PORT` (default `8000`), `HOST` (default `127.0.0.1`), and `NO_BROWSER=1` to skip opening the browser.
+
+`server.py` serves only `index.html`, `css/` and `js/`. The repository root, including `.git/`, is never exposed. `GET /health` returns `{"status":"ok"}`.
+
+Any static server works too, for example `python -m http.server 8000 --bind 127.0.0.1`. Do not expose a server like that on a network, because it serves the whole folder, including `.git/`.
+
 ---
 
-## 3. WebRTC Security & Camera Permissions
+## 4. Camera and secure contexts
 
-> [!IMPORTANT]
-> **Browser HTTPS Security Policy:**  
-> Modern browsers (Chrome, Edge, Safari, Firefox) restrict `navigator.mediaDevices.getUserMedia` exclusively to **Secure Contexts**:
-> - `http://localhost` or `http://127.0.0.1` (Permitted)
-> - Any valid `https://` origin (Permitted)
-> - Any raw LAN IP (e.g. `http://192.168.1.50:8000`) is **blocked by browser security**.
+Browsers allow `getUserMedia` only on secure origins:
 
-If hosting the local server on an office LAN for other colleagues to connect to:
-- **Solution A (Recommended):** Use the public GitHub Pages URL: [https://avazasgarov.github.io/lens-dataset-collector/](https://avazasgarov.github.io/lens-dataset-collector/).
-- **Solution B (Cloudflare Tunnel):** Run `cloudflared tunnel --url http://localhost:8000` to get a free temporary HTTPS link.
+| Origin | Camera |
+|---|---|
+| `https://…` | Allowed |
+| `http://localhost`, `http://127.0.0.1` | Allowed |
+| `http://192.168.x.x` (LAN IP) | Blocked |
+
+For colleagues on other machines, share the GitHub Pages URL. If a temporary HTTPS tunnel to a local build is needed: `cloudflared tunnel --url http://localhost:8000`.

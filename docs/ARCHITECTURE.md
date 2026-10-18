@@ -1,170 +1,162 @@
-# System Architecture & Technical Specifications
+# Architecture
 
-This document outlines the detailed system architecture, component breakdown, and runtime data flows for the Lens Detection Dataset Collection platform.
+The app is a static, framework-free web client plus a Google Apps Script backend that writes to Google Drive. There is no build step: the files in the repository are served as they are.
 
 ---
 
-## 1. Architectural Overview
-
-The application is structured as a decoupled, serverless client-cloud system with an optional local Python fallback:
+## 1. Overview
 
 ```mermaid
-graph TB
-    subgraph ClientLayer ["Frontend / Client Layer (Browser)"]
-        HTML["index.html (Semantic SPA)"]
-        CSS["css/style.css (Dark Glassmorphism)"]
-        
-        subgraph JSModules ["JavaScript Architecture"]
-            APP["app.js<br/>(Coordinator & State Loop)"]
-            CAM["camera.js<br/>(WebRTC & Canvas)"]
-            GUIDE["guidance.js<br/>(Luminance & Wizard)"]
-            UPL["uploader.js<br/>(Queue & GAS Client)"]
-        end
-    end
+flowchart TB
+  subgraph Client["Browser"]
+    HTML["index.html"]
+    CSS["css/style.css"]
+    UTIL["utils.js: normalisation, storage"]
+    CAM["camera.js: CameraController"]
+    GUIDE["guidance.js: GuidanceSystem"]
+    UPL["uploader.js: DriveUploader"]
+    COMBO["combobox.js: Combobox"]
+    APP["app.js: coordinator"]
+  end
+  subgraph Hosting["Static hosting"]
+    GHP["GitHub Pages (main branch)"]
+    LCL["server.py (localhost:8000)"]
+  end
+  subgraph Backend["Google Apps Script (runs as the folder owner)"]
+    GET["doGet ?action=tree | ping"]
+    POST["doPost: validate, find-or-create, save"]
+  end
+  subgraph Drive["Google Drive"]
+    ROOT["Lens_Dataset"]
+    NAME["Name folder"]
+    CLASS["class folder"]
+  end
 
-    subgraph HostingLayer ["Cloud Hosting Options"]
-        GHP["GitHub Pages (Active: avazasgarov.github.io)"]
-        VCL["Vercel (vercel.json)"]
-        LCL["Local FastAPI (server.py)"]
-    end
-
-    subgraph BackendLayer ["Google Apps Script (GAS) Execution"]
-        ENDPOINT["script.google.com/macros/s/.../exec"]
-        DOGET["doGet(): List folders"]
-        DOPOST["doPost(): Decode & Store"]
-    end
-
-    subgraph CloudStorage ["Google Drive Infrastructure"]
-        ROOT["Root Shared Folder<br/>(1PIz4lSXEC4cz7PRve9MRHmyTAh8n4wVR)"]
-        U1["/Avaz/"]
-        U2["/Mahammad/"]
-        U3["/Leyla/"]
-        UX["/<Employee>/"]
-    end
-
-    HTML --> APP
-    APP --> CAM
-    APP --> GUIDE
-    APP --> UPL
-
-    HostingLayer -.->|Serves static files| ClientLayer
-    UPL -->|HTTPS GET (Fetch folders)| ENDPOINT
-    UPL -->|HTTPS POST (Upload base64)| ENDPOINT
-
-    ENDPOINT --> DOGET
-    ENDPOINT --> DOPOST
-    DOGET --> ROOT
-    DOPOST --> ROOT
-    ROOT --> U1
-    ROOT --> U2
-    ROOT --> U3
-    ROOT --> UX
+  Hosting -->|"serves"| Client
+  APP --> CAM
+  APP --> GUIDE
+  APP --> UPL
+  APP --> COMBO
+  UPL -->|"GET"| GET
+  UPL -->|"POST text/plain"| POST
+  GET --> ROOT
+  POST --> ROOT --> NAME --> CLASS
 ```
 
----
-
-## 2. Component Breakdown
-
-### 2.1. Client-Side Modules
-
-#### 1. `camera.js` (`CameraController`)
-- **WebRTC Stream Acquisition:** Calls `navigator.mediaDevices.getUserMedia` with ideal constraints `1280x720@30fps`.
-- **Multi-device enumeration:** Uses `navigator.mediaDevices.enumerateDevices` to populate the camera selection dropdown.
-- **Mirroring:** Toggles `.mirror` CSS class on video element and tracks `isMirror` state.
-- **Clean Frame Extraction:**
-  - Uses an offscreen `<canvas>` with dimensions set to `video.videoWidth` and `video.videoHeight`.
-  - When `isMirror` is true, executes `ctx.translate(w, 0); ctx.scale(-1, 1);` before `drawImage`.
-  - Exports clean JPEG blob via `canvas.toDataURL("image/jpeg", 0.92)`.
-
-#### 2. `guidance.js` (`GuidanceSystem`)
-- **Luminance Calculation:**
-  Samples a 32x18 pixel region from the center of the video feed every 250ms onto a lightweight offscreen canvas (`willReadFrequently: true`).
-  $$\text{Luminance} = 0.299R + 0.587G + 0.114B$$
-  - Thresholds:
-    - $\text{Avg} < 55$: Warning - "İşıq zəifdir - Otaq işığını yandırın"
-    - $\text{Avg} > 215$: Warning - "Çox parlaqdır - Parıltı yaranır"
-    - $55 \le \text{Avg} \le 215$: Success - "İşıqlandırma idealdır"
-- **Viewfinder Guidelines:**
-  Renders interactive brackets and crosshairs on the transparent overlay canvas positioned over the video stream.
-- **Scenario Wizard Engine:**
-  Maintains step progress and target counts across 5 training poses. Automatically advances to next scenario upon reaching target.
-
-#### 3. `uploader.js` (`DriveUploader`)
-- **Queue Management:**
-  In-memory FIFO queue with upload status (`pending` -> `uploading` -> `success` / `failed`).
-- **Retries & Error Handling:**
-  Attempts upload up to 3 times with a 2-second backoff before marking as failed.
-- **CORS Bypass:**
-  Sends payload using `Content-Type: text/plain;charset=utf-8` to Google Apps Script.
-- **Folder List Fetching:**
-  Issues `GET` requests to retrieve existing subfolders for the selector dropdown.
-
-#### 4. `app.js` (Main Coordinator)
-- **Animation Loop:** Synchronizes `requestAnimationFrame` for HUD overlays and countdown timer.
-- **Keyboard Shortcuts:**
-  - `Space`: Start / Pause auto-capture loop.
-  - `C` / `Enter`: Instant manual capture.
-  - `W` / `ArrowUp`: Increase interval by 0.5s.
-  - `S` / `ArrowDown`: Decrease interval by 0.5s.
-  - `M`: Toggle mirror mode.
-- **Audio Feedback:** Synthesizes shutter click via Web Audio API (`AudioContext`) with an exponential frequency ramp from 800Hz to 120Hz over 80ms.
-- **Visual Feedback:** Triggers green perimeter flash (`.flash-effect.active`) for 120ms.
+Scripts load in this order (all `defer`): `utils.js`, `camera.js`, `guidance.js`, `uploader.js`, `combobox.js`, `app.js`.
 
 ---
 
-### 2.2. Serverless Backend (`google_drive_script.js`)
+## 2. Client modules
 
-Executed directly on Google Cloud's serverless Apps Script engine under the owner's authorization:
+### `utils.js` — `window.LensUtils`
+- `normalizeName(v)` and `normalizeClass(v)` mirror the backend's `cleanName_` and `cleanClass_`. Keep them identical.
+- `fileSafe`, `fileStamp` (`YYYYMMDD-HHMMSS-mmm`), `clockTime`, `randomId`, `compareNames` (Azerbaijani collation).
+- `store`: a `localStorage` wrapper that never throws (private mode, blocked storage).
 
-- **`doGet(e)`**:
-  - Traverses `DriveApp.getFolderById("1PIz4lSXEC4cz7PRve9MRHmyTAh8n4wVR")`.
-  - Collects all immediate subfolders, sorts them alphabetically by name.
-  - Returns JSON: `{"status": "ok", "folders": [{"id": "...", "name": "..."}]}`.
-- **`doPost(e)`**:
-  - Parses JSON payload (`userName`, `fileName`, `image`).
-  - Performs case-insensitive comparison against existing subfolder names.
-  - Reuses existing folder if match found; otherwise creates a new folder.
-  - Decodes base64 string using `Utilities.base64Decode()`.
-  - Creates the JPEG file in the targeted folder via `userFolder.createFile()`.
-  - Returns JSON: `{"status": "success", "fileId": "...", "folderId": "..."}`.
+### `camera.js` — `CameraController`
+- `start(deviceId)` requests `1280×720@30` as *ideal* constraints. If switching to another camera fails, it restores the previous one.
+- Every `start()` gets a sequence number. An older request that resolves late releases its stream and throws `SupersededError`, so rapid switching cannot leak a live camera.
+- `onEnded` fires when the camera is unplugged or stopped by the OS.
+- `capture()` returns `{ image, thumb, width, height }`: a full-resolution JPEG (quality 0.92, mirrored when mirror is on) and a 160 px thumbnail for the UI.
+
+### `guidance.js` — `GuidanceSystem`
+- Five scenarios (10 + 10 + 10 + 10 + 15 frames). `setKey("name|class")` switches progress, which is persisted under `localStorage["lens.progress.v2"]`.
+- `record()` counts captures only in wizard mode. It moves on to the next unfinished scenario and returns `"advanced"`, `"finished"` or `null`.
+- `analyzeLighting()` computes the mean luma of the centre region of a 64×36 sample: below 55 means too dark, above 215 means overexposed.
+- `renderOverlay()` draws rule-of-thirds lines, corner marks and a centre cross inside the area the video actually covers (`object-fit: contain`). It is DPR-aware and redraws only when the geometry changes.
+
+### `uploader.js` — `DriveUploader`
+- `fetchTree({ fresh })` reads `GET ?action=tree` and also accepts the v1 `{ folders }` response.
+- Queue states: `pending → uploading → success | pending (retry) | failed`.
+- Up to 3 uploads run in parallel. Retries back off at 2, 4, 8 and 16 s, and an item is marked `failed` after 5 attempts. Being offline does not use up an attempt; the queue resumes on the `online` event. `retry(id)` and `retryAllFailed()` handle manual retries.
+- The full-size image is released once an upload succeeds. `backlog` counts every frame not yet on Drive.
+
+### `combobox.js` — `Combobox`
+- A WAI-ARIA combobox (list autocomplete): free text with filtered suggestions, `↑ ↓ Enter Esc`, mouse selection without losing focus.
+- Callbacks: `onInput` (live typing), `onCommit` (blur, Enter, pick) and `onEnter`.
+
+### `app.js` — coordinator
+- Derives `state.user` / `state.cls` from the inputs while the user types, snapping to an existing folder's spelling (`leyla` → `Leyla`).
+- Renders the destination path, the hints that say whether a folder is new or existing, the class chips, the scenario panel, the stats and the recent captures (keyed DOM updates, so thumbnails are never re-decoded).
+- Auto-capture runs on `requestAnimationFrame`. It stops when the tab is hidden, a field is cleared, the camera fails or more than 40 frames wait in the queue.
+- Keyboard shortcuts are ignored while typing and when a modifier key is held. Key auto-repeat cannot trigger a burst of captures.
+- `beforeunload` warns while frames are still waiting to upload.
 
 ---
 
-## 3. Data Schema
+## 3. Backend — `google_drive_script.js` (API v2)
 
-### 3.1. LocalStorage Schema
-| Key | Type | Description |
-|---|---|---|
-| `lens_collector_name` | `string` | The last selected or created user/folder name |
+| Call | Behaviour |
+|---|---|
+| `GET ?action=ping` | `{ "status": "ok", "version": 2 }` |
+| `GET ?action=tree[&fresh=1]` | Person folders with their class sub-folders, the union of class names, and the v1 `folders` array. Cached for 60 s unless `fresh=1`. |
+| `POST` (text/plain JSON) | Validates the input, finds or creates `<Name>/<class>/` and saves the JPEG with JSON metadata as its description. |
 
-### 3.2. Upload Payload Schema (`POST /exec`)
+Folder lookup: a CacheService hit is checked (folder not trashed, same name, same parent). On a miss, the backend lists `searchFolders("trashed = false")` and compares names case-insensitively, choosing the oldest folder on ties. Creation happens under `LockService`, with a limit of 200 new folders per hour.
+
+---
+
+## 4. Data schemas
+
+### Upload payload (`POST`)
 ```json
 {
-  "userName": "Mahammad",
-  "fileName": "Mahammad_1792070000000_123.jpg",
-  "image": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/..."
+  "v": 2,
+  "userName": "Leyla",
+  "className": "mouse",
+  "fileName": "mouse_Leyla_20261018-164803-123_k3f9.jpg",
+  "image": "data:image/jpeg;base64,/9j/4AAQ...",
+  "meta": {
+    "capturedAt": "2026-10-18T12:48:03.123Z",
+    "scenario": 2,
+    "mode": "wizard",
+    "mirror": true,
+    "width": 1280,
+    "height": 720,
+    "camera": "Integrated Webcam",
+    "luminance": 132,
+    "app": "web-2.0"
+  }
 }
 ```
 
-### 3.3. Response Schemas
-**GET (Folder Listing):**
-```json
-{
-  "status": "ok",
-  "folders": [
-    { "id": "1CEyHPv63I9wl_g8dYnv1bGunE2SMx2XC", "name": "Avaz" },
-    { "id": "1pqGsL_BtUl1XvscG5AgVldmvdogNQUQ_", "name": "Mahammad" }
-  ]
-}
-```
-
-**POST (Upload Response):**
+### Upload response
 ```json
 {
   "status": "success",
+  "version": 2,
   "fileId": "1z73PgSD3OT75bvbShseMvKZFZKaQ7C0D",
-  "fileName": "Mahammad_1792070000000_123.jpg",
-  "folderId": "1pqGsL_BtUl1XvscG5AgVldmvdogNQUQ_",
-  "folderName": "Mahammad"
+  "fileName": "mouse_Leyla_20261018-164803-123_k3f9.jpg",
+  "folderId": "…class folder id…",
+  "folderName": "mouse",
+  "userFolderId": "1n7QkbtE7Yp8dPd9P4zQyzoVezOJOwpCQ",
+  "userName": "Leyla",
+  "className": "mouse",
+  "path": "Leyla/mouse"
 }
 ```
+On failure: `{ "status": "error", "message": "…" }`.
+
+### Tree response (`GET ?action=tree`)
+```json
+{
+  "status": "ok",
+  "version": 2,
+  "users": [
+    { "id": "1n7Q…", "name": "Leyla", "classes": [ { "id": "18OV…", "name": "mouse" } ] }
+  ],
+  "classes": ["mouse"],
+  "folders": [ { "id": "1n7Q…", "name": "Leyla" } ]
+}
+```
+
+### localStorage keys
+| Key | Content |
+|---|---|
+| `lens.user` | Last person name (migrated from the v1 key `lens_collector_name`) |
+| `lens.class` | Last class |
+| `lens.interval` | Auto-capture interval in seconds (0.5–10) |
+| `lens.mirror` | Mirror on/off |
+| `lens.mode` | `wizard` or `free` |
+| `lens.progress.v2` | `{ "leyla\|mouse": { "counts": [..5], "index": 0, "updatedAt": … } }` |

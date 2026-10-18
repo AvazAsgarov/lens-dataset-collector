@@ -1,0 +1,8 @@
+# Vercel serves this repo as a static site — keep the local Python runner and
+# reference material out of the deployment (prevents FastAPI auto-detection).
+server.py
+requirements.txt
+RUN_Web_App.bat
+google_drive_script.js
+docs/
+lens-detection-ref/

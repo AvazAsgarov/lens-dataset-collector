@@ -1,125 +1,100 @@
-# AI Handover & Master Context Document
+# Handover — Lens Dataset Collector
 
-> **Target Audience:** Incoming AI Agent / Engineering Team taking over the project.  
-> **Last Updated:** 2026-10-18  
-> **Project Name:** Lens Detection - Dataset Collection Web Platform  
-> **Owner / Author:** Avaz Asgarov (`AvazAsgarov`)  
-
----
-
-## 1. Executive Summary & Purpose
-
-This platform was engineered to collect computer vision training datasets for **Lens & Phone Detection** (detecting unauthorized cameras/smartphones pointed at computer screens, DLP security use-case). 
-
-The original codebase (`lkazimzadehh/lens-detection`) used a local desktop Python/OpenCV script (`tools/data_collector.py` & `.bat` file). That script was only usable by technical developers on Windows with local Python environments.
-
-**What This Project Achieved:**
-Transformed the dataset collection into a **100% cloud-hosted, zero-installation web application** deployable 24/7 on GitHub Pages / Vercel. Non-technical colleagues across an enterprise simply open a URL in Chrome/Edge, select their name, receive real-time UI guidance (lighting check, framing guides, step-by-step angle/distance scenarios), and capture photos. Images are automatically sorted and uploaded to individual employee subfolders in Google Drive with **zero login friction** and **automatic deduplication**.
+> **Audience:** the next engineer or AI agent working on this project.
+> **Last updated:** 2026-10-18 (v2.0.0)
+> **Owner:** Avaz Asgarov (`AvazAsgarov`)
 
 ---
 
-## 2. Key Links, IDs & Credentials
+## 1. What this is
 
-| Resource | Value / URL | Description |
-|---|---|---|
-| **Live Web App (Production)** | [https://avazasgarov.github.io/lens-dataset-collector/](https://avazasgarov.github.io/lens-dataset-collector/) | 24/7 accessible website for team data collection |
-| **GitHub Repository** | [https://github.com/AvazAsgarov/lens-dataset-collector](https://github.com/AvazAsgarov/lens-dataset-collector) | Main source repository |
-| **GitHub User Token** | `Stored in Project Chat / Environment` | User PAT with repo scopes (Account: `AvazAsgarov`) |
-| **Google Drive Target Folder** | [1PIz4lSXEC4cz7PRve9MRHmyTAh8n4wVR](https://drive.google.com/drive/folders/1PIz4lSXEC4cz7PRve9MRHmyTAh8n4wVR?usp=sharing) | Root Drive folder containing all employee subfolders |
-| **Google Apps Script Web App** | `https://script.google.com/macros/s/AKfycbyFU3KixOVpS9I3Iz1w_PiV47tRwiernHbNyOuYSBSo_yILrw_ce6YmDssAfGUlhUak/exec` | Serverless backend bridging the web app to Google Drive API |
-| **Reference Repository** | `https://github.com/lkazimzadehh/lens-detection` (cloned locally in `lens-detection-ref/`) | Original ML model, inference shield, and collection tool |
+A zero-install web app for collecting computer-vision training images. Team members open a URL, allow the camera, enter **their name** and **the class of the object** they are photographing (e.g. `mouse`, `notebook`, `phone`), and capture frames. Every frame is uploaded to Google Drive as:
 
----
-
-## 3. High-Level Architecture
-
-```mermaid
-flowchart TD
-    subgraph Client ["Client Browser (Any Device)"]
-        Cam["WebRTC Camera Stream (1280x720 HD)"]
-        Luminance["Live Lighting Quality Analyzer (Canvas Luminance)"]
-        Wizard["5-Scenario Step-by-Step Guidance Wizard"]
-        Controls["Shortcuts: Space (Rec/Pause), C/Enter (Snap), W/S (Speed)"]
-        Canvas["Offscreen Canvas (Clean Frame + Mirror Transform)"]
-        Queue["DriveUploader Async Queue & Status"]
-    end
-
-    subgraph Backend ["Serverless Bridge (Google Apps Script)"]
-        doGet["doGet(): List Team Subfolders (Alphabetical JSON)"]
-        doPost["doPost(): Base64 Decode & Case-Insensitive Deduplication"]
-    end
-
-    subgraph Storage ["Google Drive (Target: 1PIz4lSXEC4cz7PRve9MRHmyTAh8n4wVR)"]
-        FolderLookup{"Folder Exists?"}
-        ExistingFolder["Existing Folder: e.g. /Mahammad/"]
-        NewFolder["New Folder: e.g. /Leyla/"]
-        DriveFile["Clean JPEG: <User>_<timestamp>_<rand>.jpg"]
-    end
-
-    Cam --> Canvas
-    Luminance --> Client
-    Wizard --> Client
-    Controls --> Canvas
-    Canvas -->|Raw Base64 JPEG| Queue
-    Queue -->|POST text/plain| doPost
-    Client -.->|GET folder list on load| doGet
-    doPost --> FolderLookup
-    FolderLookup -->|Yes| ExistingFolder
-    FolderLookup -->|No| NewFolder
-    ExistingFolder --> DriveFile
-    NewFolder --> DriveFile
+```
+Lens_Dataset/<Name>/<class>/<class>_<Name>_<YYYYMMDD-HHMMSS-mmm>_<rand4>.jpg
 ```
 
----
+It replaced the desktop OpenCV collector in the reference repo (`lkazimzadehh/lens-detection`, cloned locally into the git-ignored `lens-detection-ref/`).
 
-## 4. Crucial Technical Invariants & Gotchas
+### v2.0.0 (2026-10-18)
 
-Incoming AI agents must be aware of these non-obvious engineering decisions:
-
-1. **CORS Handling with Google Apps Script (`text/plain;charset=utf-8`):**
-   - Google Apps Script Web Apps do **not** support standard CORS `OPTIONS` preflight requests for `application/json`.
-   - To bypass the browser preflight and avoid CORS blocking, requests are sent with `Content-Type: text/plain;charset=utf-8`. Google handles the subsequent 302 redirect smoothly, and browser `fetch` completes successfully.
-2. **Case-Insensitive Folder Deduplication:**
-   - Employees often type their names differently (e.g. `mahammad`, `Mahammad`, `MAHAMMAD`).
-   - `google_drive_script.js` iterates all subfolders with `.toLowerCase() === targetLower`. If a match is found, it reuses that folder ID. It **never** creates duplicate folders.
-3. **Clean Frame Capture vs HUD Overlay:**
-   - The user sees bounding boxes, crosshairs, status badges, and lighting warnings on an HTML5 overlay canvas.
-   - The saved training photo is captured from an **offscreen canvas** directly from the raw `<video>` element. The saved training images are 100% clean and free of UI artifacts.
-4. **Mirror Mode & Training Domain Invariance:**
-   - In `lens-detection-ref`, the inference engine (`src/run_shield.py`) and collector (`tools/data_collector.py`) horizontally flip webcam frames (`cv2.flip(frame, 1)`).
-   - In our web client, mirror mode is enabled by default. `captureCleanFrame()` applies `ctx.scale(-1, 1)` so the collected dataset strictly matches the model's expected coordinate domain.
-5. **Chrome Multi-Account Redirect Bug:**
-   - If opening the Google Apps Script Web App `/exec` URL directly in Chrome with multiple logged-in Google accounts (`authuser=2`), Google displays *"Sorry, unable to open the file at this time"*.
-   - This is purely a Google session cookie redirect issue. When accessed via JavaScript `fetch()` or `curl`, the API functions properly and returns clean JSON.
+- New **class** input next to the name; Drive layout changed from `<Name>/` to `<Name>/<class>/` (team request from Leyla Kazimzade).
+- Apps Script backend rewritten (API v2): nested find-or-create with `LockService`, trashed folders ignored, JPEG validation, idempotent uploads, per-file JSON metadata, folder tree endpoint.
+- UI rebuilt without the Tailwind Play CDN: vanilla CSS design system, light/dark themes, accessible combobox inputs, inline errors instead of `alert()`.
+- About 90 audited bugs fixed. The main ones: an invisible top HUD, Azerbaijani names mangled into duplicate folders, frames silently dropped after 3 retries, the app dying when the camera failed, keyboard shortcuts hijacking `Ctrl+C` and focused buttons, and a GitHub Actions workflow that failed on every push.
 
 ---
 
-## 5. File Inventory & Roles
+## 2. Key links and IDs
 
-| Path | Purpose |
+| Resource | Value |
 |---|---|
-| `index.html` | Core Single-Page Application (SPA) layout, Tailwind CSS via CDN, HUD elements |
-| `css/style.css` | Glassmorphism, animations, dark mode theme, HUD styles |
-| `js/camera.js` | WebRTC controller, device enumeration, offscreen clean frame snapshot |
-| `js/guidance.js` | Real-time luminance analyzer, canvas viewfinder overlay, 5-scenario dataset wizard |
-| `js/uploader.js` | Background upload queue, retries, stats tracking, folder enumeration client |
-| `js/app.js` | Main app coordinator, keyboard shortcuts (`Space`, `C`, `Enter`, `W`, `S`, `M`), Web Audio shutter synthesizer |
-| `google_drive_script.js` | Complete Google Apps Script code to deploy on Google Drive |
-| `server.py` | Local FastAPI runner serving static files with auto-browser launch |
-| `requirements.txt` | Python dependencies for local server (`fastapi`, `uvicorn`) |
-| `RUN_Web_App.bat` | Double-click Windows launcher for local offline testing |
-| `vercel.json` | Zero-config static deployment for Vercel |
-| `.github/workflows/deploy.yml` | GitHub Actions workflow for automatic deployment to GitHub Pages |
-| `docs/` | Comprehensive technical documentation suite |
+| Live site | <https://avazasgarov.github.io/lens-dataset-collector/> |
+| Repository | <https://github.com/AvazAsgarov/lens-dataset-collector> |
+| Drive root folder (`Lens_Dataset`) | `1PIz4lSXEC4cz7PRve9MRHmyTAh8n4wVR` |
+| Apps Script web app (`/exec`) | `https://script.google.com/macros/s/AKfycbyFU3KixOVpS9I3Iz1w_PiV47tRwiernHbNyOuYSBSo_yILrw_ce6YmDssAfGUlhUak/exec` |
+| Apps Script project | "Untitled project" in the **AI Factory** Google account (the account that owns `Lens_Dataset`; in the owner's Chrome it is `authuser=2`) |
+| Active deployment | Version 4 — "v2: Ad/Sinif qovluq strukturu" (2026-10-18) |
+
+Never commit tokens or passwords to this public repository.
 
 ---
 
-## 6. Recommended Next Steps for Incoming Agent
+## 3. Architecture at a glance
 
-If you are continuing feature development, consider these logical extensions:
-1. **Bulk Dataset Download Tool (`tools/sync_from_drive.py`):**
-   - Create a Python script that uses Google Drive API or a Service Account to bulk download all employee folders from Drive into local `data/captures/images/` for YOLO retraining.
-2. **Roboflow Annotation Batcher:**
-   - Integrate with `lens-detection-ref/tools/collect_dataset_images.py` to index downloaded images into `data/all_images` with SHA-256 deduplication and manifest generation.
-3. **Negative Class Toggle in Web UI:**
-   - Currently, all photos are grouped into the employee's folder. If the team wants explicit negative training data (e.g. empty desks, typing without phone), add a simple toggle button that sets a filename prefix `negative_*.jpg` vs `threat_*.jpg`.
+```mermaid
+flowchart LR
+  subgraph Browser["Browser (GitHub Pages)"]
+    UI["index.html + css"]
+    APP["app.js"]
+    CAM["camera.js"]
+    GUIDE["guidance.js"]
+    UPL["uploader.js"]
+  end
+  subgraph GAS["Google Apps Script web app"]
+    GET["doGet: folder tree"]
+    POST["doPost: save JPEG"]
+  end
+  subgraph Drive["Google Drive: Lens_Dataset"]
+    P["Name folder"]
+    C["class folder"]
+    F["JPEG + JSON description"]
+  end
+  APP --> CAM
+  APP --> GUIDE
+  APP --> UPL
+  UPL -- "GET ?action=tree" --> GET
+  UPL -- "POST text/plain JSON" --> POST
+  POST --> P --> C --> F
+```
+
+Details: [ARCHITECTURE.md](ARCHITECTURE.md).
+
+---
+
+## 4. Invariants — do not break these
+
+1. **`Content-Type: text/plain`.** Apps Script web apps do not answer CORS preflight requests, so the client posts JSON as `text/plain;charset=utf-8`. Do not switch to `application/json`.
+2. **Same normalisation on both sides.** `normalizeName` / `normalizeClass` in `js/utils.js` must stay identical to `cleanName_` / `cleanClass_` in `google_drive_script.js`. Names: trimmed, single spaces, no `/` `\` or control characters, max 60 characters, casing kept. Classes: the same, then lowercased with spaces turned into `_`.
+3. **No duplicate folders.** Lookups are case-insensitive and ignore trashed folders. Creation happens inside `LockService.getScriptLock()`. If old duplicates exist, the oldest folder wins.
+4. **Uploads are idempotent by file name.** A retried POST whose file already exists returns the existing file. File names therefore carry a random suffix and must stay unique.
+5. **Clean frames only.** The overlay (grid, corner marks, HUD) is drawn on a separate canvas. `CameraController.capture()` reads the raw `<video>` frame.
+6. **Mirror.** When mirror is on (the default), the saved frame is flipped too, to match `cv2.flip(frame, 1)` in the reference inference pipeline. The state is recorded in each file's metadata (`mirror`).
+7. **Backward compatibility.** The backend still accepts v1 payloads without `className` (it saves into the person folder), and `doGet` still returns the v1 `folders` array.
+
+---
+
+## 5. Operational notes
+
+- **Updating the backend:** paste `google_drive_script.js` into the Apps Script project, then go to Deploy → Manage deployments → ✏️ → *New version* → Deploy. The URL stays the same. See [GOOGLE_DRIVE_INTEGRATION.md](GOOGLE_DRIVE_INTEGRATION.md).
+- **Updating the frontend:** push to `main`. GitHub Pages serves the branch directly (legacy "deploy from branch", `.nojekyll`). GitHub Actions cannot run on this account (billing lock), so there is no workflow. Bump the `?v=` query on the CSS and JS tags in `index.html` on every release so browsers drop cached files.
+- **Privacy:** the `Lens_Dataset` Drive folder is currently shared as *anyone with the link*, and its ID is public in this repo. That makes every captured photo, including faces and screens, publicly readable. Restricting sharing to the team is recommended, and is the folder owner's call. Uploads keep working when the folder is private because the backend runs as the owner.
+- **Abuse surface:** the `/exec` endpoint is public by design (no login for collectors). The backend accepts only JPEG files up to 10 MB, sanitises names, and allows at most 200 new folders per hour.
+
+---
+
+## 6. Suggested next steps
+
+1. A bulk download tool (`tools/sync_from_drive.py`) that mirrors `Lens_Dataset/<Name>/<class>/` into a local YOLO-style layout and reads the JSON description of each file.
+2. A per-class dashboard (image counts per person and class) built on `doGet ?action=tree` plus file counts.
+3. Optionally, persist the upload queue in IndexedDB so frames survive a crashed tab. Today a `beforeunload` prompt warns the user instead.

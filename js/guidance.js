@@ -1,196 +1,242 @@
 /**
- * Guidance & Lighting Analysis Module
- * Analyzes video stream luminance and renders framing guidelines & scenario wizard.
+ * Guidance module — capture scenarios (progress kept per person + class),
+ * lighting analysis and the viewfinder overlay.
  */
 class GuidanceSystem {
-  constructor(canvasElement, videoElement) {
+  constructor(videoElement, canvasElement) {
+    this.video = videoElement;
     this.canvas = canvasElement;
     this.ctx = this.canvas.getContext("2d");
-    this.video = videoElement;
-    this.sampleCanvas = document.createElement("canvas");
-    this.sampleCtx = this.sampleCanvas.getContext("2d", { willReadFrequently: true });
 
+    this.sampleCanvas = document.createElement("canvas");
     this.sampleCanvas.width = 64;
     this.sampleCanvas.height = 36;
+    this.sampleCtx = this.sampleCanvas.getContext("2d", { willReadFrequently: true });
 
-    this.lightingState = {
-      level: 128,
-      status: "good",
-      message: "İşıq analizi aparılır...",
-    };
+    this.lighting = { level: null, status: "unknown" };
 
     this.scenarios = [
       {
         id: 1,
-        title: "Ssenari 1: Ekrana Paralel və Düz",
-        desc: "Telefonu göz səviyyəsində, ekrana və veb-kameraya düz paralel tutun.",
-        tip: "Telefonun ön və arxa üzünü növbə ilə sınayın.",
+        title: "Düz və paralel",
+        desc: "Obyekti kameraya qarşı düz, paralel tutun. Kadrın mərkəzindən başlayın.",
+        tip: "Obyektin ön və arxa tərəfini növbə ilə göstərin.",
         target: 10,
       },
       {
         id: 2,
-        title: "Ssenari 2: Müxtəlif Bucaqlar və Maililik",
-        desc: "Telefonu 30-45 dərəcə sağa, sola, yuxarı və ya aşağı maili tutun.",
-        tip: "Model üçün bucaq altında telefonun görünüşü çox vacibdir.",
+        title: "Müxtəlif bucaqlar",
+        desc: "Obyekti 30–45° sağa, sola, yuxarı və aşağı əyərək tutun.",
+        tip: "Real şəraitdə obyektlər nadir hallarda tam düz görünür — bucaqlar model üçün vacibdir.",
         target: 10,
       },
       {
         id: 3,
-        title: "Ssenari 3: Yaxın və Uzaq Məsafələr",
-        desc: "Məsafəni dəyişin: gah 20-30 sm çox yaxınlaşdırın, gah 1 metr uzaqlaşdırın.",
-        tip: "Ekranın fərqli hissələrindən çəkirmiş kimi tutun.",
+        title: "Yaxın və uzaq",
+        desc: "Məsafəni dəyişin: 20–30 sm-dən başlayıb təxminən 1 metrə qədər uzaqlaşın.",
+        tip: "Obyekti kadrın künclərinə və kənarlarına da yerləşdirin.",
         target: 10,
       },
       {
         id: 4,
-        title: "Ssenari 4: Fərqli Tutuş və Əllər",
-        desc: "Telefonu gah sol, gah sağ, gah da hər iki əllə tutun.",
-        tip: "Barmaqlarınızla kameranı və ya çərçivəni qismən örtə bilərsiniz.",
+        title: "Fərqli tutuş",
+        desc: "Obyekti sol əllə, sağ əllə və iki əllə tutun.",
+        tip: "Barmaqların obyektin bir hissəsini örtməsi normaldır və model üçün faydalıdır.",
         target: 10,
       },
       {
         id: 5,
-        title: "Ssenari 5: Qarışıq və Əşyalı Mühit",
-        desc: "Telefonla yanaşı masada fincan, qələm, qulaqlıq tutaraq sınayın.",
-        tip: "Həmçinin telefonu masaya qoyub ekranını göstərə bilərsiniz.",
+        title: "Qarışıq mühit",
+        desc: "Masada başqa əşyalar (fincan, qələm, qulaqlıq) olarkən çəkin.",
+        tip: "Obyekti masaya da qoyun və fonu dəyişərək çəkin.",
         target: 15,
       },
     ];
 
-    this.currentScenarioIndex = 0;
-    this.scenarioCounts = [0, 0, 0, 0, 0];
-    this.isWizardMode = true;
+    this.storageKey = "lens.progress.v2";
+    this.progress = LensUtils.store.get(this.storageKey, {}) || {};
+    this.key = "";
+    this.index = 0;
+    this.counts = this.scenarios.map(() => 0);
+    this.mode = "wizard"; // "wizard" | "free"
+
+    this.overlaySize = "";
   }
 
-  getCurrentScenario() {
-    return this.scenarios[this.currentScenarioIndex];
+  /* ---------- Scenario progress ---------- */
+
+  setKey(key) {
+    if (key === this.key) return;
+    this.key = key;
+    const saved = key ? this.progress[key] : null;
+    this.counts = this.scenarios.map((_, i) => (saved && Number(saved.counts && saved.counts[i])) || 0);
+    this.index = saved ? Math.min(Math.max(0, Number(saved.index) || 0), this.scenarios.length - 1) : 0;
   }
 
-  getCurrentStepCount() {
-    return this.scenarioCounts[this.currentScenarioIndex] || 0;
+  save() {
+    if (!this.key) return;
+    this.progress[this.key] = { counts: this.counts.slice(), index: this.index, updatedAt: Date.now() };
+    LensUtils.store.set(this.storageKey, this.progress);
   }
 
-  recordCapture() {
-    this.scenarioCounts[this.currentScenarioIndex] =
-      (this.scenarioCounts[this.currentScenarioIndex] || 0) + 1;
+  get current() {
+    return this.scenarios[this.index];
+  }
 
-    const current = this.getCurrentScenario();
-    if (this.isWizardMode && this.scenarioCounts[this.currentScenarioIndex] >= current.target) {
-      if (this.currentScenarioIndex < this.scenarios.length - 1) {
-        this.currentScenarioIndex++;
+  get currentCount() {
+    return this.counts[this.index] || 0;
+  }
+
+  isComplete(i) {
+    return (this.counts[i] || 0) >= this.scenarios[i].target;
+  }
+
+  get allComplete() {
+    return this.scenarios.every((_, i) => this.isComplete(i));
+  }
+
+  get totalDone() {
+    return this.scenarios.reduce((sum, s, i) => sum + Math.min(this.counts[i] || 0, s.target), 0);
+  }
+
+  get totalTarget() {
+    return this.scenarios.reduce((sum, s) => sum + s.target, 0);
+  }
+
+  /**
+   * Counts a capture for the active scenario (wizard mode only).
+   * Returns "advanced" | "finished" | null.
+   */
+  record() {
+    if (this.mode !== "wizard") return null;
+    const wasComplete = this.allComplete;
+    this.counts[this.index] = (this.counts[this.index] || 0) + 1;
+
+    let result = null;
+    if (this.isComplete(this.index)) {
+      const next = this.nextIncomplete();
+      if (next !== -1 && next !== this.index) {
+        this.index = next;
+        result = "advanced";
+      } else if (!wasComplete && this.allComplete) {
+        result = "finished";
       }
     }
+    this.save();
+    return result;
   }
 
-  nextScenario() {
-    if (this.currentScenarioIndex < this.scenarios.length - 1) {
-      this.currentScenarioIndex++;
+  nextIncomplete() {
+    const n = this.scenarios.length;
+    for (let step = 1; step <= n; step++) {
+      const i = (this.index + step) % n;
+      if (!this.isComplete(i)) return i;
     }
+    return -1;
   }
 
-  prevScenario() {
-    if (this.currentScenarioIndex > 0) {
-      this.currentScenarioIndex--;
-    }
+  go(i) {
+    this.index = Math.min(Math.max(0, i), this.scenarios.length - 1);
+    this.save();
   }
+
+  reset() {
+    this.counts = this.scenarios.map(() => 0);
+    this.index = 0;
+    this.save();
+  }
+
+  /* ---------- Lighting ---------- */
 
   analyzeLighting() {
-    if (!this.video || this.video.readyState < 2) return this.lightingState;
+    if (!this.video || this.video.readyState < 2) return this.lighting;
 
     this.sampleCtx.drawImage(this.video, 0, 0, 64, 36);
-    const imgData = this.sampleCtx.getImageData(16, 9, 32, 18);
-    const data = imgData.data;
-
-    let totalLum = 0;
-    const pixelCount = data.length / 4;
-
+    // Centre region, where the object usually is.
+    const data = this.sampleCtx.getImageData(16, 9, 32, 18).data;
+    let total = 0;
     for (let i = 0; i < data.length; i += 4) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      totalLum += 0.299 * r + 0.587 * g + 0.114 * b;
+      total += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
     }
+    const level = Math.round(total / (data.length / 4));
 
-    const avgLum = Math.round(totalLum / pixelCount);
     let status = "good";
-    let message = "İşıqlandırma idealdır";
+    if (level < 55) status = "too_dark";
+    else if (level > 215) status = "too_bright";
 
-    if (avgLum < 55) {
-      status = "too_dark";
-      message = "İşıq zəifdir - Otaq işığını yandırın";
-    } else if (avgLum > 215) {
-      status = "too_bright";
-      message = "Çox parlaqdır - Parıltı yaranır";
-    }
-
-    this.lightingState = { level: avgLum, status, message };
-    return this.lightingState;
+    this.lighting = { level, status };
+    return this.lighting;
   }
 
+  /* ---------- Overlay (rule-of-thirds + corner marks) ---------- */
+
   renderOverlay() {
-    if (!this.canvas || !this.video) return;
+    const cssW = this.canvas.clientWidth;
+    const cssH = this.canvas.clientHeight;
+    const vw = this.video.videoWidth;
+    const vh = this.video.videoHeight;
+    if (!cssW || !cssH || !vw || !vh) return;
 
-    const w = this.canvas.width = this.video.clientWidth || 960;
-    const h = this.canvas.height = this.video.clientHeight || 540;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const size = `${cssW}x${cssH}@${dpr}:${vw}x${vh}`;
+    if (size === this.overlaySize) return; // static overlay — redraw only when geometry changes
+    this.overlaySize = size;
+
+    this.canvas.width = Math.round(cssW * dpr);
+    this.canvas.height = Math.round(cssH * dpr);
     const ctx = this.ctx;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
 
-    ctx.clearRect(0, 0, w, h);
+    // Area actually covered by the video (object-fit: contain).
+    const scale = Math.min(cssW / vw, cssH / vh);
+    const w = vw * scale;
+    const h = vh * scale;
+    const x = (cssW - w) / 2;
+    const y = (cssH - h) / 2;
 
-    // Bounding Box Viewfinder in center
-    const boxW = Math.round(w * 0.45);
-    const boxH = Math.round(h * 0.65);
-    const boxX = Math.round((w - boxW) / 2);
-    const boxY = Math.round((h - boxH) / 2);
-
-    // Corner guides
-    const cornerSize = 24;
-    const cornerThickness = 3;
-
-    ctx.strokeStyle = "rgba(59, 130, 246, 0.7)";
-    ctx.lineWidth = cornerThickness;
-
-    // Top-Left
-    ctx.beginPath();
-    ctx.moveTo(boxX, boxY + cornerSize);
-    ctx.lineTo(boxX, boxY);
-    ctx.lineTo(boxX + cornerSize, boxY);
-    ctx.stroke();
-
-    // Top-Right
-    ctx.beginPath();
-    ctx.moveTo(boxX + boxW - cornerSize, boxY);
-    ctx.lineTo(boxX + boxW, boxY);
-    ctx.lineTo(boxX + boxW, boxY + cornerSize);
-    ctx.stroke();
-
-    // Bottom-Left
-    ctx.beginPath();
-    ctx.moveTo(boxX, boxY + boxH - cornerSize);
-    ctx.lineTo(boxX, boxY + boxH);
-    ctx.lineTo(boxX + cornerSize, boxY + boxH);
-    ctx.stroke();
-
-    // Bottom-Right
-    ctx.beginPath();
-    ctx.moveTo(boxX + boxW - cornerSize, boxY + boxH);
-    ctx.lineTo(boxX + boxW, boxY + boxH);
-    ctx.lineTo(boxX + boxW, boxY + boxH - cornerSize);
-    ctx.stroke();
-
-    // Center subtle crosshair
-    const midX = w / 2;
-    const midY = h / 2;
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.14)";
     ctx.lineWidth = 1;
-    ctx.setLineDash([4, 4]);
-
     ctx.beginPath();
-    ctx.moveTo(midX - 15, midY);
-    ctx.lineTo(midX + 15, midY);
-    ctx.moveTo(midX, midY - 15);
-    ctx.lineTo(midX, midY + 15);
+    for (let i = 1; i < 3; i++) {
+      const gx = Math.round(x + (w * i) / 3) + 0.5;
+      const gy = Math.round(y + (h * i) / 3) + 0.5;
+      ctx.moveTo(gx, y);
+      ctx.lineTo(gx, y + h);
+      ctx.moveTo(x, gy);
+      ctx.lineTo(x + w, gy);
+    }
     ctx.stroke();
-    ctx.setLineDash([]);
+
+    const inset = Math.max(12, Math.round(Math.min(w, h) * 0.04));
+    const len = Math.max(14, Math.round(Math.min(w, h) * 0.05));
+    const l = x + inset;
+    const r = x + w - inset;
+    const t = y + inset;
+    const b = y + h - inset;
+
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
+    ctx.lineWidth = 1.5;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(l, t + len); ctx.lineTo(l, t); ctx.lineTo(l + len, t);
+    ctx.moveTo(r - len, t); ctx.lineTo(r, t); ctx.lineTo(r, t + len);
+    ctx.moveTo(l, b - len); ctx.lineTo(l, b); ctx.lineTo(l + len, b);
+    ctx.moveTo(r - len, b); ctx.lineTo(r, b); ctx.lineTo(r, b - len);
+    ctx.stroke();
+
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx - 8, cy); ctx.lineTo(cx + 8, cy);
+    ctx.moveTo(cx, cy - 8); ctx.lineTo(cx, cy + 8);
+    ctx.stroke();
+  }
+
+  invalidateOverlay() {
+    this.overlaySize = "";
   }
 }
 

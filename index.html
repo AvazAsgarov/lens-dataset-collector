@@ -2,198 +2,247 @@
 <html lang="az">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Lens Detection - Dataset Collector</title>
-  <!-- Tailwind CSS CDN for utility layout -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Custom Modern Dark Stylesheet -->
-  <link rel="stylesheet" href="css/style.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Lens Dataset Collector</title>
+  <meta name="description" content="Kompüter görməsi modelləri üçün şəkil toplama aləti. Şəkillər Ad / Sinif qovluqları ilə avtomatik Google Drive-a yüklənir." />
+  <meta name="theme-color" content="#f7f6f3" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#191918" media="(prefers-color-scheme: dark)" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23111'/%3E%3Ccircle cx='16' cy='16' r='8.5' fill='none' stroke='%23fff' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='3.25' fill='%23fff'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="css/style.css?v=2.0.0" />
 </head>
-<body class="p-3 md:p-6">
-  <div class="max-w-7xl mx-auto w-full flex flex-col gap-5">
-    
-    <!-- Top Header -->
-    <header class="glass-panel px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-4">
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/30">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-        </div>
-        <div>
-          <h1 class="text-xl font-bold tracking-tight text-white">Lens Detection - Dataset Collector</h1>
-          <p class="text-xs text-slate-400">Şirkət daxili dataset toplama və avtomatik Google Drive sinxronizasiyası</p>
+<body>
+  <svg class="sprite" aria-hidden="true" focusable="false">
+    <symbol id="i-lens" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5" /><circle cx="12" cy="12" r="2.75" fill="currentColor" stroke="none" /></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.8v12.4a.8.8 0 0 0 1.2.7l10-6.2a.8.8 0 0 0 0-1.4l-10-6.2A.8.8 0 0 0 8 5.8z" fill="currentColor" stroke="none" /></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2" fill="currentColor" stroke="none" /></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8.6A1.6 1.6 0 0 1 5.6 7h2.1l1.6-2.2h5.4L16.3 7h2.1A1.6 1.6 0 0 1 20 8.6v8.8a1.6 1.6 0 0 1-1.6 1.6H5.6A1.6 1.6 0 0 1 4 17.4z" /><circle cx="12" cy="12.8" r="3.4" /></symbol>
+    <symbol id="i-camera-off" viewBox="0 0 24 24"><path d="M9.3 4.8h5.4L16.3 7h2.1A1.6 1.6 0 0 1 20 8.6v8M18.2 19H5.6A1.6 1.6 0 0 1 4 17.4V8.6A1.6 1.6 0 0 1 5.6 7" /><path d="M9.6 10.4a3.4 3.4 0 0 0 4.8 4.8M3.5 3.5l17 17" /></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 5h5v5M19 5l-8 8M17.5 13.5V18a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7.5a1 1 0 0 1 1-1h4.5" /></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 7.3A1.8 1.8 0 0 1 5.3 5.5h3.6l2 2.2h7.8a1.8 1.8 0 0 1 1.8 1.8v8.2a1.8 1.8 0 0 1-1.8 1.8H5.3a1.8 1.8 0 0 1-1.8-1.8z" /></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" /></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" /><path d="M12 7.8v5" /><path d="M12 16.2v.01" /></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" /><path d="M12 11v5" /><path d="M12 7.8v.01" /></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3" /><path d="M19.5 4.5v4h-4" /></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></symbol>
+    <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6" /></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6" /></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2" /><circle cx="9" cy="10" r="1.5" /><path d="M20 15.5l-4.5-4.5L7 19" /></symbol>
+  </svg>
+
+  <a class="skip-link" href="#main">Əsas məzmuna keç</a>
+  <noscript><p class="noscript">Bu tətbiq üçün brauzerdə JavaScript aktiv olmalıdır.</p></noscript>
+
+  <header class="topbar">
+    <div class="topbar__inner">
+      <div class="brand">
+        <span class="brand__mark" aria-hidden="true"><svg class="icon"><use href="#i-lens" /></svg></span>
+        <div class="brand__text">
+          <h1 class="brand__name">Lens Dataset Collector</h1>
+          <p class="brand__sub">Şəkil toplama · Google Drive sinxronizasiyası</p>
         </div>
       </div>
+      <div class="topbar__actions">
+        <button type="button" id="drive-status" class="conn" data-state="loading" title="Drive bağlantısını yenilə">
+          <span class="conn__dot" aria-hidden="true"></span>
+          <span class="conn__label" id="drive-status-label">Drive yoxlanılır</span>
+        </button>
+        <a class="btn btn--ghost btn--sm" href="https://drive.google.com/drive/folders/1PIz4lSXEC4cz7PRve9MRHmyTAh8n4wVR?usp=sharing" target="_blank" rel="noopener noreferrer">
+          <span>Drive qovluğu</span>
+          <svg class="icon icon--sm" aria-hidden="true"><use href="#i-external" /></svg>
+        </a>
+      </div>
+    </div>
+  </header>
 
-      <!-- Drive Status Link -->
-      <a href="https://drive.google.com/drive/folders/1PIz4lSXEC4cz7PRve9MRHmyTAh8n4wVR?usp=sharing" target="_blank" class="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-semibold hover:bg-blue-500/20 transition">
-        <svg class="w-4 h-4 text-emerald-400" fill="currentColor" viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
-        <span>Google Drive Qovluğu</span>
-        <svg class="w-3.5 h-3.5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
-      </a>
-    </header>
+  <main id="main" class="layout">
+    <section class="stage reveal" style="--i: 0" aria-label="Kamera və idarəetmə">
+      <div class="viewport" id="viewport" data-state="loading" data-running="false">
+        <video id="webcam-video" autoplay playsinline muted></video>
+        <canvas id="overlay-canvas" aria-hidden="true"></canvas>
+        <div id="flash-effect" class="flash" aria-hidden="true"></div>
 
-    <!-- Top Settings Bar -->
-    <section class="glass-panel p-4 flex flex-wrap items-center justify-between gap-4">
-      <div class="flex flex-wrap items-center gap-2.5">
-        <label class="text-sm font-semibold text-slate-300">İstifadəçi / Qovluq:</label>
-        <div class="flex items-center gap-1.5">
-          <select id="user-folder-select" class="input-dark text-xs py-2 w-48 font-semibold cursor-pointer">
-            <option value="" disabled selected>Qovluqlar yüklənir...</option>
-          </select>
-          <button id="btn-refresh-folders" title="Qovluqları yenilə" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700/60 transition">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+        <div class="hud hud--top">
+          <span id="status-badge" class="pill" data-tone="idle"><span class="pill__dot" aria-hidden="true"></span><span id="status-text">Gözləmədə</span></span>
+          <span id="lighting-badge" class="pill" data-tone="idle"><span class="pill__dot" aria-hidden="true"></span><span id="lighting-text">İşıq yoxlanılır</span></span>
+        </div>
+        <div class="hud hud--bottom">
+          <span class="pill pill--path"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-folder" /></svg><span id="hud-path">Ad və sinif seçilməyib</span></span>
+          <span id="resolution-label" class="pill pill--mono">—</span>
+        </div>
+        <div class="countdown" aria-hidden="true"><span id="countdown-bar"></span></div>
+
+        <div class="viewport__message" id="camera-message">
+          <span class="viewport__icon" id="camera-message-icon" aria-hidden="true"><span class="spinner spinner--light"></span></span>
+          <p class="viewport__title" id="camera-message-title">Kamera açılır</p>
+          <p class="viewport__text" id="camera-message-text">Brauzer kamera icazəsi istəsə, “İcazə ver” seçin.</p>
+          <button type="button" class="btn btn--light btn--sm" id="btn-camera-retry" hidden>
+            <svg class="icon icon--sm" aria-hidden="true"><use href="#i-refresh" /></svg>
+            <span>Yenidən cəhd et</span>
           </button>
         </div>
-        <input type="text" id="new-collector-name" placeholder="Yeni ad daxil edin..." class="input-dark w-44 font-semibold text-xs hidden" />
       </div>
 
-      <div class="flex flex-wrap items-center gap-4">
-        <!-- Mode switcher -->
-        <div class="flex items-center gap-1 bg-slate-900/60 p-1 rounded-xl border border-slate-700/50 text-xs font-semibold">
-          <label class="cursor-pointer px-3 py-1.5 rounded-lg transition has-[:checked]:bg-blue-600 has-[:checked]:text-white text-slate-400">
-            <input type="radio" name="mode" id="mode-wizard" value="wizard" checked class="hidden" />
-            Bələdçi Rejimi
+      <div class="controls">
+        <div class="controls__primary">
+          <button type="button" id="btn-toggle-auto" class="btn btn--primary btn--lg" data-running="false" disabled>
+            <svg class="icon" aria-hidden="true"><use href="#i-play" /></svg>
+            <span id="btn-toggle-label">Avtomatik çəkiliş</span>
+            <kbd>Space</kbd>
+          </button>
+          <button type="button" id="btn-snap" class="btn btn--secondary btn--lg" disabled>
+            <svg class="icon" aria-hidden="true"><use href="#i-camera" /></svg>
+            <span>Tək kadr</span>
+            <kbd>C</kbd>
+          </button>
+        </div>
+        <div class="controls__settings">
+          <div class="setting">
+            <span class="setting__label" id="interval-label">İnterval</span>
+            <div class="stepper" role="group" aria-labelledby="interval-label">
+              <button type="button" class="stepper__btn" id="btn-interval-down" aria-label="İntervalı azalt (S)">−</button>
+              <output class="stepper__value" id="interval-val" aria-live="polite">3.0 s</output>
+              <button type="button" class="stepper__btn" id="btn-interval-up" aria-label="İntervalı artır (W)">+</button>
+            </div>
+          </div>
+          <label class="switch" title="Saxlanılan kadr da güzgülənir (model bu formatda öyrədilib). Qısa yol: M">
+            <input type="checkbox" id="mirror-toggle" checked autocomplete="off" />
+            <span class="switch__track" aria-hidden="true"></span>
+            <span>Güzgü</span>
           </label>
-          <label class="cursor-pointer px-3 py-1.5 rounded-lg transition has-[:checked]:bg-blue-600 has-[:checked]:text-white text-slate-400">
-            <input type="radio" name="mode" id="mode-free" value="free" class="hidden" />
-            Sərbəst Rejim
+          <label class="setting">
+            <span class="sr-only">Kamera</span>
+            <select id="camera-select" class="select" disabled>
+              <option>Kamera axtarılır…</option>
+            </select>
           </label>
         </div>
-
-        <!-- Camera select -->
-        <select id="camera-select" class="input-dark text-xs py-2 w-40"></select>
-
-        <!-- Interval slider -->
-        <div class="flex items-center gap-2 text-xs text-slate-300 bg-slate-900/50 px-3 py-1.5 rounded-xl border border-slate-700/50">
-          <span>İnterval:</span>
-          <input type="range" id="interval-slider" min="0.5" max="10.0" step="0.5" value="3.0" class="w-20 cursor-pointer" />
-          <span id="interval-val" class="font-mono font-bold text-blue-400 w-8">3.0s</span>
-        </div>
-
-        <!-- Mirror toggle -->
-        <label class="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
-          <input type="checkbox" id="mirror-toggle" checked class="rounded bg-slate-900 border-slate-700 text-blue-600 focus:ring-0 cursor-pointer w-4 h-4" />
-          <span>Güzgü (Mirror)</span>
-        </label>
       </div>
+
+      <p class="shortcuts">
+        <span>Qısa yollar:</span>
+        <span><kbd>Space</kbd> başlat / dayandır</span>
+        <span><kbd>C</kbd> tək kadr</span>
+        <span><kbd>W</kbd> <kbd>S</kbd> interval</span>
+        <span><kbd>M</kbd> güzgü</span>
+      </p>
     </section>
 
-    <!-- Main Grid -->
-    <main class="grid grid-cols-1 lg:grid-cols-3 gap-5">
-      
-      <!-- Left: Camera & Controls (2 Cols on lg) -->
-      <div class="lg:col-span-2 flex flex-col gap-4">
-        
-        <!-- Camera Viewport Box -->
-        <div class="camera-wrapper mx-auto">
-          <video id="webcam-video" autoplay playsinline muted></video>
-          <canvas id="overlay-canvas"></canvas>
-          <div id="flash-effect" class="flash-effect"></div>
+    <aside class="panel" aria-label="Çəkiliş paneli">
+      <section class="card reveal" style="--i: 1" aria-labelledby="setup-title">
+        <header class="card__head">
+          <h2 class="card__title" id="setup-title">Çəkiliş məlumatları</h2>
+        </header>
 
-          <!-- Top HUD -->
-          <div class="hud-bar">
-            <div id="status-badge" class="badge badge-paused">Gözləmədə (PAUSED)</div>
-            <div id="lighting-badge" class="badge badge-good">✓ İşıq analizi edilir...</div>
+        <div class="field">
+          <label class="field__label" for="user-input">Adınız</label>
+          <div class="combo">
+            <input id="user-input" class="input" type="text" placeholder="məs. Leyla" autocomplete="off" autocapitalize="words" spellcheck="false" maxlength="60" aria-describedby="user-hint" />
+            <ul id="user-list" class="combo__list" aria-label="Mövcud adlar" hidden></ul>
           </div>
+          <p class="field__hint" id="user-hint">Siyahıdan adınızı seçin və ya yenisini yazın.</p>
+        </div>
 
-          <!-- Bottom HUD Bar -->
-          <div class="hud-bar hud-bar-bottom">
-            <div class="text-[11px] text-slate-300 flex items-center gap-2">
-              <span>Qısa yollar:</span>
-              <span class="kbd-chip">Space</span> Fasilə/Start
-              <span class="kbd-chip">C</span> Tək Çəkiliş
-              <span class="kbd-chip">W / S</span> Sürət
+        <div class="field">
+          <label class="field__label" for="class-input">Obyektin sinfi</label>
+          <div class="combo">
+            <input id="class-input" class="input input--mono" type="text" placeholder="məs. mouse" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="60" aria-describedby="class-hint" />
+            <ul id="class-list" class="combo__list" aria-label="Mövcud siniflər" hidden></ul>
+          </div>
+          <div class="chips" id="class-chips" role="group" aria-label="Sürətli seçim" hidden></div>
+          <p class="field__hint" id="class-hint">Şəkildə nə olduğunu yazın: mouse, notebook, phone…</p>
+        </div>
+
+        <div class="dest">
+          <span class="dest__label">Şəkillər bu qovluğa yüklənəcək</span>
+          <code class="dest__path" id="dest-path"></code>
+        </div>
+      </section>
+
+      <section class="card reveal" style="--i: 2" aria-labelledby="wizard-title">
+        <header class="card__head">
+          <h2 class="card__title" id="wizard-title">Bələdçi</h2>
+          <div class="segmented" role="radiogroup" aria-label="Çəkiliş rejimi">
+            <label><input type="radio" name="mode" id="mode-wizard" value="wizard" autocomplete="off" checked /><span>Addımlı</span></label>
+            <label><input type="radio" name="mode" id="mode-free" value="free" autocomplete="off" /><span>Sərbəst</span></label>
+          </div>
+        </header>
+
+        <div id="wizard-body">
+          <div class="steps" id="scenario-steps"></div>
+          <div class="scenario__meta">
+            <span class="eyebrow" id="scenario-step">Addım 1 / 5</span>
+            <span class="eyebrow" id="scenario-total">0 / 55</span>
+          </div>
+          <h3 class="scenario__title" id="scenario-title"></h3>
+          <p class="scenario__desc" id="scenario-desc"></p>
+          <p class="scenario__tip">
+            <svg class="icon icon--sm" aria-hidden="true"><use href="#i-info" /></svg>
+            <span id="scenario-tip"></span>
+          </p>
+          <div class="scenario__foot">
+            <span class="scenario__count" id="scenario-progress">0 / 10 kadr</span>
+            <span class="tag tag--green" id="scenario-done" hidden>Tamamlandı</span>
+            <div class="scenario__nav">
+              <button type="button" class="btn btn--ghost btn--sm btn--icon" id="btn-prev-scenario" aria-label="Əvvəlki addım">
+                <svg class="icon icon--sm" aria-hidden="true"><use href="#i-arrow-left" /></svg>
+              </button>
+              <button type="button" class="btn btn--ghost btn--sm btn--icon" id="btn-next-scenario" aria-label="Növbəti addım">
+                <svg class="icon icon--sm" aria-hidden="true"><use href="#i-arrow-right" /></svg>
+              </button>
             </div>
-            <div class="text-[11px] text-slate-400 font-mono">1280x720 HD</div>
           </div>
+          <button type="button" class="link-btn" id="btn-reset-progress">Bu obyekt üçün irəliləyişi sıfırla</button>
         </div>
 
-        <!-- Capture Action Buttons -->
-        <div class="glass-panel p-4 flex flex-wrap items-center justify-between gap-3">
-          <div class="flex items-center gap-3">
-            <button id="btn-toggle-auto" class="btn btn-primary text-base px-6 py-3">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-              <span>Başlat (Start)</span>
-            </button>
-            <button id="btn-snap" class="btn btn-secondary text-sm px-4 py-3">
-              <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path></svg>
-              <span>Dərhal Tək Kadr Çək [C]</span>
-            </button>
-          </div>
+        <p class="free-note" id="free-note" hidden>
+          Sərbəst rejimdə addımlar izlənmir — istədiyiniz kimi çəkin. Şəkillər yenə də seçilmiş Ad / Sinif qovluğuna yüklənir.
+        </p>
+      </section>
 
-          <div class="text-xs text-slate-400 hidden sm:block">
-            Təmiz kadrlar birbaşa Drive-da adınıza olan qovluğa yüklənir.
-          </div>
+      <section class="card card--flush stats reveal" style="--i: 3" aria-label="Statistika">
+        <div class="stat">
+          <span class="stat__label">Çəkildi</span>
+          <span class="stat__value" id="stat-captured">0</span>
         </div>
-
-      </div>
-
-      <!-- Right: Guidance Wizard & Upload Queue (1 Col on lg) -->
-      <div class="flex flex-col gap-4">
-        
-        <!-- Scenario Guidance Wizard Card -->
-        <div id="wizard-panel" class="glass-panel p-5 flex flex-col gap-3">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-bold uppercase tracking-wider text-blue-400">Addım-addım Bələdçi</span>
-            <span id="scenario-progress" class="font-mono text-xs font-bold text-slate-300">0 / 10</span>
-          </div>
-
-          <!-- Progress Bar -->
-          <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-            <div id="scenario-progress-bar" class="bg-blue-500 h-1.5 rounded-full transition-all duration-300" style="width: 0%"></div>
-          </div>
-
-          <h3 id="scenario-title" class="font-bold text-white text-base mt-1">Ssenari 1: Ekrana Paralel və Düz</h3>
-          <p id="scenario-desc" class="text-xs text-slate-300 leading-relaxed">Telefonu göz səviyyəsində, ekrana və veb-kameraya düz paralel tutun.</p>
-          
-          <div class="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-start gap-2.5 text-xs text-blue-300">
-            <svg class="w-4 h-4 mt-0.5 shrink-0 text-blue-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path></svg>
-            <span id="scenario-tip">Telefonun ön və arxa üzünü növbə ilə sınayın.</span>
-          </div>
-
-          <div class="flex items-center justify-between pt-2">
-            <button id="btn-prev-scenario" class="btn btn-secondary text-xs px-3 py-1.5">← Əvvəlki</button>
-            <button id="btn-next-scenario" class="btn btn-secondary text-xs px-3 py-1.5">Növbəti →</button>
-          </div>
+        <div class="stat">
+          <span class="stat__label">Drive-da</span>
+          <span class="stat__value" id="stat-uploaded" data-tone="good">0</span>
         </div>
-
-        <!-- Live Statistics Counter -->
-        <div class="grid grid-cols-3 gap-3">
-          <div class="glass-panel p-3 text-center">
-            <div class="text-xs text-slate-400 mb-1">Çəkildi</div>
-            <div id="stat-captured" class="text-xl font-bold text-white font-mono">0</div>
-          </div>
-          <div class="glass-panel p-3 text-center">
-            <div class="text-xs text-slate-400 mb-1">Drive-da</div>
-            <div id="stat-uploaded" class="text-xl font-bold text-emerald-400 font-mono">0</div>
-          </div>
-          <div class="glass-panel p-3 text-center">
-            <div class="text-xs text-slate-400 mb-1">Növbədə</div>
-            <div id="stat-queue" class="text-xl font-bold text-amber-400 font-mono">0</div>
-          </div>
+        <div class="stat">
+          <span class="stat__label">Növbədə</span>
+          <span class="stat__value" id="stat-queue">0</span>
         </div>
-
-        <!-- Recent Uploads Stream -->
-        <div class="glass-panel p-4 flex flex-col gap-3 flex-1 min-h-[220px]">
-          <div class="flex items-center justify-between text-xs font-semibold text-slate-300">
-            <span>Son Çəkilən Şəkillər</span>
-            <span class="text-[10px] text-slate-400">Avtomatik yüklənir</span>
-          </div>
-          <div id="uploads-list" class="flex flex-col gap-2 overflow-y-auto max-h-[250px] pr-1">
-            <div class="text-xs text-slate-500 text-center py-6">Hələ şəkil çəkilməyib</div>
-          </div>
+        <div class="stat">
+          <span class="stat__label">Xəta</span>
+          <span class="stat__value" id="stat-failed" data-tone="bad">0</span>
         </div>
+      </section>
 
-      </div>
+      <section class="card reveal" style="--i: 4" aria-labelledby="recent-title">
+        <header class="card__head">
+          <h2 class="card__title" id="recent-title">Son kadrlar</h2>
+          <button type="button" class="link-btn link-btn--danger" id="btn-retry-all" hidden>Hamısını yenidən yüklə</button>
+        </header>
+        <ul class="recent" id="uploads-list"></ul>
+        <div class="empty" id="uploads-empty">
+          <svg class="icon empty__icon" aria-hidden="true"><use href="#i-image" /></svg>
+          <p class="empty__title">Hələ kadr yoxdur</p>
+          <p class="empty__text">Ad və sinfi daxil edin, sonra <kbd>Space</kbd> və ya <kbd>C</kbd> basın.</p>
+        </div>
+      </section>
+    </aside>
+  </main>
 
-    </main>
+  <div class="toasts" id="toast-region" aria-live="polite" aria-atomic="false"></div>
 
-  </div>
-
-  <!-- Scripts -->
-  <script src="js/camera.js"></script>
-  <script src="js/guidance.js"></script>
-  <script src="js/uploader.js"></script>
-  <script src="js/app.js"></script>
+  <script src="js/utils.js?v=2.0.0" defer></script>
+  <script src="js/camera.js?v=2.0.0" defer></script>
+  <script src="js/guidance.js?v=2.0.0" defer></script>
+  <script src="js/uploader.js?v=2.0.0" defer></script>
+  <script src="js/combobox.js?v=2.0.0" defer></script>
+  <script src="js/app.js?v=2.0.0" defer></script>
 </body>
 </html>
