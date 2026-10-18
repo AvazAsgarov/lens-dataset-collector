@@ -86,16 +86,24 @@
   const uploader = new DriveUploader(ENDPOINT, { concurrency: 3 });
 
   const state = {
+    // Committed target — the only values capture() uses. Updated on blur / Enter / pick.
     user: "",
     cls: "",
+    // Draft — what is currently typed (normalised); drives hints and the preview only.
+    draft: { user: "", cls: "" },
+
     running: false,
     cycleStart: 0,
     nextAt: 0,
     interval: clampInterval(Number(U.store.get("lens.interval", 3))),
     captured: 0,
+
     tree: { users: [] },
+    treeLoaded: false,
+    treeSeq: 0,
     uploadedPairs: [], // [userName, className] uploaded in this session
     driveState: "loading",
+
     lastLightStatus: "",
     lastLightCheck: 0,
   };
@@ -117,8 +125,11 @@
 
   const TOAST_ICONS = { info: "info", success: "check", warn: "alert", error: "alert" };
 
+  // The container is the live region; toasts themselves carry no role (no nested live regions).
   function toast(message, tone = "info", timeout = 4200) {
-    const existing = Array.from(el.toasts.children).find((t) => t.dataset.message === message);
+    const existing = Array.from(el.toasts.children).find(
+      (t) => t.dataset.message === message && !t.classList.contains("is-leaving")
+    );
     if (existing) {
       clearTimeout(existing._timer);
       existing._timer = setTimeout(() => dismissToast(existing), timeout);
@@ -129,7 +140,6 @@
     node.className = "toast";
     node.dataset.tone = tone;
     node.dataset.message = message;
-    node.setAttribute("role", tone === "error" ? "alert" : "status");
     const text = document.createElement("span");
     text.textContent = message;
     node.append(icon(TOAST_ICONS[tone] || "info", "icon--sm"), text);
@@ -151,7 +161,8 @@
      ====================================================================== */
 
   function findUser(name) {
-    return name ? state.tree.users.find((u) => U.sameName(u.name, name)) : null;
+    const key = U.nameKey(name);
+    return key ? state.tree.users.find((u) => U.nameKey(u.name) === key) : null;
   }
 
   function userNames() {
@@ -163,70 +174,83 @@
     return user ? user.classes.slice().sort(U.compareNames) : [];
   }
 
+  function hasClass(userName, cls) {
+    const key = U.classKey(cls);
+    return !!key && classesOf(userName).some((c) => U.classKey(c) === key);
+  }
+
   function allClasses() {
     const seen = new Map();
     state.tree.users.forEach((u) =>
       u.classes.forEach((c) => {
-        const key = c.toLowerCase();
-        seen.set(key, (seen.get(key) || { name: c, count: 0 }));
+        const key = U.classKey(c);
+        if (!seen.has(key)) seen.set(key, { name: c, count: 0 });
         seen.get(key).count++;
       })
     );
     return Array.from(seen.values());
   }
 
-  // Classes for suggestions: this person's first, then everyone else's by popularity.
-  function classSuggestions() {
-    const mine = classesOf(state.user);
-    const mineKeys = new Set(mine.map((c) => c.toLowerCase()));
+  // Suggestions for a person: their own classes first, then the team's by popularity.
+  function classSuggestions(userName) {
+    const mine = classesOf(userName);
+    const mineKeys = new Set(mine.map((c) => U.classKey(c)));
     const others = allClasses()
-      .filter((c) => !mineKeys.has(c.name.toLowerCase()))
+      .filter((c) => !mineKeys.has(U.classKey(c.name)))
       .sort((a, b) => b.count - a.count || U.compareNames(a.name, b.name))
       .map((c) => c.name);
     return mine.concat(others);
   }
 
-  // Reflect a successful upload locally so suggestions update without a refetch.
+  // Returns true when this added a person or class the local tree did not know yet.
   function rememberInTree(userName, className) {
-    if (!state.uploadedPairs.some(([u, c]) => U.sameName(u, userName) && U.sameName(c, className))) {
+    if (!state.uploadedPairs.some(([u, c]) => U.nameKey(u) === U.nameKey(userName) && U.classKey(c) === U.classKey(className))) {
       state.uploadedPairs.push([userName, className]);
     }
-    addToTree(userName, className);
+    return addToTree(userName, className);
   }
 
   function addToTree(userName, className) {
+    let changed = false;
     let user = findUser(userName);
     if (!user) {
       user = { name: userName, classes: [] };
       state.tree.users.push(user);
+      changed = true;
     }
-    if (className && !user.classes.some((c) => U.sameName(c, className))) {
+    if (className && !user.classes.some((c) => U.classKey(c) === U.classKey(className))) {
       user.classes.push(className);
+      changed = true;
     }
+    return changed;
   }
 
   async function loadTree({ fresh = false, silent = false } = {}) {
+    const seq = ++state.treeSeq;
     setDriveState("loading");
     try {
       const tree = await uploader.fetchTree({ fresh });
+      if (seq !== state.treeSeq) return; // a newer request owns the result
       if (tree.version < 2) {
         console.warn("[app] Drive backend is API v1 — class sub-folders will not be created. Redeploy google_drive_script.js.");
       }
       state.tree = tree;
+      state.treeLoaded = true;
       // The backend caches the tree briefly — re-apply folders this session has just uploaded into.
       state.uploadedPairs.forEach(([userName, className]) => addToTree(userName, className));
       setDriveState("online");
     } catch (err) {
+      if (seq !== state.treeSeq) return;
       console.warn("[app] folder tree failed:", err);
       setDriveState("offline");
       if (!silent) {
-        toast("Google Drive ilə əlaqə qurulmadı. Şəkillər növbədə saxlanılır və bağlantı bərpa olunanda yüklənəcək.", "error", 6500);
+        toast("Google Drive ilə əlaqə qurulmadı. Kadrlar növbədə saxlanılır və bağlantı bərpa olunanda yüklənəcək.", "error", 6500);
       }
     }
-    syncTarget();
-    // Show the canonical spelling of an existing folder (e.g. "leyla" → "Leyla").
-    if (document.activeElement !== el.userInput) userCombo.setValue(state.user);
-    if (document.activeElement !== el.classInput) classCombo.setValue(state.cls);
+    // Show the canonical spelling of existing folders (e.g. "leyla" → "Leyla"),
+    // without touching a field that is being typed in.
+    if (document.activeElement !== el.userInput) commitUser({ silent: true });
+    else commitClass({ silent: true });
     userCombo.refresh();
     classCombo.refresh();
   }
@@ -234,14 +258,14 @@
   function setDriveState(next) {
     state.driveState = next;
     el.driveStatus.dataset.state = next;
+    el.driveStatus.setAttribute("aria-busy", String(next === "loading"));
     const labels = {
       loading: "Drive yoxlanılır",
       online: "Drive qoşulub",
       offline: "Drive əlçatan deyil",
     };
     el.driveStatusLabel.textContent = labels[next];
-    el.driveStatus.title =
-      next === "offline" ? "Bağlantını yenidən yoxla" : "Qovluq siyahısını Drive-dan yenilə";
+    el.driveStatus.title = next === "offline" ? "Bağlantını yenidən yoxla" : "Qovluq siyahısını Drive-dan yenilə";
     el.driveStatus.setAttribute("aria-label", `${labels[next]}. Yeniləmək üçün klikləyin.`);
   }
 
@@ -257,7 +281,7 @@
       const n = classesOf(name).length;
       return n ? `${n} sinif` : "";
     },
-    onInput: () => syncTarget(),
+    onInput: () => readDraft(),
     onCommit: () => commitUser(),
     onEnter: () => {
       if (!state.cls) el.classInput.focus();
@@ -268,48 +292,69 @@
   const classCombo = new Combobox({
     input: el.classInput,
     list: el.classList,
-    source: classSuggestions,
-    describe: (cls) => (classesOf(state.user).some((c) => U.sameName(c, cls)) ? "sizdə var" : ""),
-    onInput: () => syncTarget(),
+    source: () => classSuggestions(state.draft.user || state.user),
+    describe: (cls) => (hasClass(state.draft.user || state.user, cls) ? "sizdə var" : ""),
+    onInput: () => readDraft(),
     onCommit: () => commitClass(),
     onEnter: () => el.classInput.blur(),
   });
 
-  function commitUser() {
-    syncTarget();
+  // Normalised person name, using the existing folder's spelling when there is one.
+  function resolveUser(raw) {
+    const name = U.normalizeName(raw);
+    const existing = findUser(name);
+    return existing ? existing.name : name;
+  }
+
+  // Normalised class; snaps only to this person's own folders (the server matches the
+  // same way), otherwise stays lowercase.
+  function resolveClass(raw, userName) {
+    const cls = U.normalizeClass(raw);
+    const own = classesOf(userName).find((c) => U.classKey(c) === cls);
+    return own || cls;
+  }
+
+  // Live typing: update the draft and the preview, never the capture target.
+  function readDraft() {
+    const user = resolveUser(el.userInput.value);
+    const cls = resolveClass(el.classInput.value, user);
+    state.draft = { user, cls };
+
+    if (user) clearFieldError(el.userInput, false);
+    if (cls) clearFieldError(el.classInput, false);
+
+    if (state.running && (user !== state.user || cls !== state.cls)) {
+      stopAuto("Ad və ya sinif dəyişdirilir — avtomatik çəkiliş dayandırıldı. Yeni dəyəri təsdiqləyib yenidən başladın.");
+    }
+    renderSetup();
+  }
+
+  function commitUser({ silent = false } = {}) {
+    state.user = resolveUser(el.userInput.value);
     userCombo.setValue(state.user);
     U.store.set("lens.user", state.user);
-    clearFieldError(el.userInput);
-    renderSetup();
+    // The class may snap differently for the new person — but never rewrite a field
+    // the user is typing in; it is committed on its own blur.
+    if (document.activeElement !== el.classInput) commitClass({ silent: true });
+    else applyTarget();
+    if (!silent) clearFieldError(el.userInput);
   }
 
-  function commitClass() {
-    syncTarget();
+  function commitClass({ silent = false } = {}) {
+    state.cls = resolveClass(el.classInput.value, state.user);
     classCombo.setValue(state.cls);
     U.store.set("lens.class", state.cls);
-    clearFieldError(el.classInput);
-    renderSetup();
+    applyTarget();
+    if (!silent) clearFieldError(el.classInput);
   }
 
-  // Derives the normalised person/class from the inputs (live, while typing).
-  function syncTarget() {
-    const rawUser = U.normalizeName(el.userInput.value);
-    const existing = findUser(rawUser);
-    state.user = existing ? existing.name : rawUser;
-
-    const rawClass = U.normalizeClass(el.classInput.value);
-    const existingClass = classSuggestions().find((c) => U.sameName(c, rawClass));
-    state.cls = existingClass || rawClass;
-
-    if (state.user) clearFieldError(el.userInput);
-    if (state.cls) clearFieldError(el.classInput);
-
-    guidance.setKey(state.user && state.cls ? `${state.user.toLowerCase()}|${state.cls.toLowerCase()}` : "");
-
+  // After the committed target changed: switch scenario progress and refresh the UI.
+  function applyTarget() {
+    guidance.setKey(state.user && state.cls ? `${U.nameKey(state.user)}|${U.classKey(state.cls)}` : "");
     if (state.running && (!state.user || !state.cls)) {
       stopAuto("Ad və ya sinif silindiyi üçün avtomatik çəkiliş dayandırıldı.");
     }
-    renderSetup();
+    readDraft();
     renderScenario();
   }
 
@@ -333,27 +378,27 @@
   }
 
   function renderSetup() {
-    // Person hint
+    const { user, cls } = state.draft;
+
     if (el.userInput.getAttribute("aria-invalid") !== "true") {
-      if (!state.user) {
+      if (!user) {
         setHint(el.userHint, ["Siyahıdan adınızı seçin və ya yenisini yazın."]);
-      } else if (findUser(state.user)) {
-        setHint(el.userHint, [tag("Mövcud qovluq", "green"), `${classesOf(state.user).length} sinif qovluğu var`]);
+      } else if (findUser(user)) {
+        setHint(el.userHint, [tag("Mövcud qovluq", "green"), `${classesOf(user).length} sinif qovluğu var`]);
       } else {
         setHint(el.userHint, [tag("Yeni", "blue"), "İlk şəkillə yeni qovluq yaradılacaq"]);
       }
     }
 
-    // Class hint
     if (el.classInput.getAttribute("aria-invalid") !== "true") {
       const typed = el.classInput.value.trim();
-      if (!state.cls) {
+      if (!cls) {
         setHint(el.classHint, ["Şəkildə nə olduğunu yazın: mouse, notebook, phone…"]);
       } else {
-        const parts = [];
-        if (classesOf(state.user).some((c) => U.sameName(c, state.cls))) parts.push(tag("Mövcud alt qovluq", "green"));
-        else parts.push(tag("Yeni", "blue"), "alt qovluq yaradılacaq");
-        if (typed && typed !== state.cls) parts.push("·", code(state.cls), "kimi saxlanacaq");
+        const parts = hasClass(user, cls)
+          ? [tag("Mövcud alt qovluq", "green")]
+          : [tag("Yeni", "blue"), "alt qovluq yaradılacaq"];
+        if (typed && typed !== cls) parts.push("·", code(cls), "kimi saxlanacaq");
         setHint(el.classHint, parts);
       }
     }
@@ -364,34 +409,51 @@
   }
 
   function renderChips() {
-    const mine = classesOf(state.user);
-    const list = (mine.length ? mine : classSuggestions()).slice(0, 10);
+    const user = state.draft.user;
+    const mine = classesOf(user);
+    const list = (mine.length ? mine : classSuggestions(user)).slice(0, 10);
     if (!list.length) {
       el.classChips.hidden = true;
       el.classChips.replaceChildren();
+      el.classChips.dataset.signature = "";
       return;
     }
     el.classChips.hidden = false;
     el.classChips.setAttribute("aria-label", mine.length ? "Sizin siniflər" : "Komandanın sinifləri");
-    el.classChips.replaceChildren(
-      ...list.map((cls) => {
-        const b = document.createElement("button");
-        b.type = "button";
-        b.className = "chip";
-        b.textContent = cls;
-        b.title = `Sinif: ${cls}`;
-        b.setAttribute("aria-pressed", String(U.sameName(cls, state.cls)));
-        b.addEventListener("click", () => {
-          classCombo.setValue(cls);
-          syncTarget();
-          commitClass();
-        });
-        return b;
-      })
-    );
+
+    // Rebuild only when the list changes, so a focused chip keeps keyboard focus.
+    const signature = list.join("\u0000");
+    if (el.classChips.dataset.signature !== signature) {
+      const focusedValue = el.classChips.contains(document.activeElement) ? document.activeElement.dataset.value : null;
+      el.classChips.dataset.signature = signature;
+      el.classChips.replaceChildren(
+        ...list.map((cls) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "chip";
+          b.textContent = cls;
+          b.title = `Sinif: ${cls}`;
+          b.dataset.value = cls;
+          b.addEventListener("click", () => {
+            classCombo.setValue(cls);
+            commitClass();
+          });
+          return b;
+        })
+      );
+      if (focusedValue) {
+        const again = Array.from(el.classChips.children).find((b) => b.dataset.value === focusedValue);
+        if (again) again.focus();
+      }
+    }
+    const current = U.classKey(state.draft.cls);
+    Array.from(el.classChips.children).forEach((b) => {
+      b.setAttribute("aria-pressed", String(!!current && U.classKey(b.dataset.value) === current));
+    });
   }
 
   function renderDestination() {
+    const { user, cls } = state.draft;
     const sep = () => {
       const s = document.createElement("span");
       s.className = "dest__sep";
@@ -407,14 +469,8 @@
       }
       return s;
     };
-    el.destPath.replaceChildren(
-      document.createTextNode("Drive"),
-      sep(),
-      seg(state.user, "ad"),
-      sep(),
-      seg(state.cls, "sinif"),
-      sep()
-    );
+    el.destPath.replaceChildren(document.createTextNode("Drive"), sep(), seg(user, "ad"), sep(), seg(cls, "sinif"), sep());
+    // The HUD shows where frames actually go (the committed target).
     el.hudPath.textContent = state.user && state.cls ? `${state.user} / ${state.cls}` : "Ad və sinif seçilməyib";
   }
 
@@ -425,10 +481,10 @@
     input.focus();
   }
 
-  function clearFieldError(input) {
+  function clearFieldError(input, rerender = true) {
     if (input.getAttribute("aria-invalid") !== "true") return;
     input.removeAttribute("aria-invalid");
-    renderSetup();
+    if (rerender) renderSetup();
   }
 
   function validateTarget() {
@@ -581,11 +637,17 @@
     return Math.min(INTERVAL_MAX, Math.max(INTERVAL_MIN, stepped));
   }
 
+  // Disables a control; if it had focus, focus moves to `fallback` instead of <body>.
+  function setDisabled(control, disabled, fallback) {
+    if (disabled && document.activeElement === control && fallback && !fallback.disabled) fallback.focus();
+    control.disabled = disabled;
+  }
+
   function setInterval_(v) {
     state.interval = clampInterval(v);
     el.intervalVal.textContent = `${state.interval.toFixed(1)} s`;
-    el.btnIntervalDown.disabled = state.interval <= INTERVAL_MIN;
-    el.btnIntervalUp.disabled = state.interval >= INTERVAL_MAX;
+    setDisabled(el.btnIntervalDown, state.interval <= INTERVAL_MIN, el.btnIntervalUp);
+    setDisabled(el.btnIntervalUp, state.interval >= INTERVAL_MAX, el.btnIntervalDown);
     if (state.running) state.nextAt = state.cycleStart + state.interval * 1000;
     U.store.set("lens.interval", state.interval);
   }
@@ -659,10 +721,15 @@
     }
   }
 
-  function onCameraReady() {
+  function syncVideoGeometry() {
+    if (!camera.ready) return;
     el.viewport.style.setProperty("--ar", camera.aspect.toFixed(4));
     el.resolution.textContent = `${camera.width}×${camera.height}`;
     guidance.invalidateOverlay();
+  }
+
+  function onCameraReady() {
+    syncVideoGeometry();
     setViewportState("ready");
     populateCameras();
   }
@@ -672,22 +739,21 @@
     if (!devices.length) {
       el.cameraSelect.replaceChildren(new Option("Kamera tapılmadı", ""));
       el.cameraSelect.disabled = true;
-      return;
+      return devices;
     }
-    el.cameraSelect.replaceChildren(
-      ...devices.map((d, i) => new Option(d.label || `Kamera ${i + 1}`, d.deviceId))
-    );
-    if (camera.deviceId && devices.some((d) => d.deviceId === camera.deviceId)) {
-      el.cameraSelect.value = camera.deviceId;
-    }
+    el.cameraSelect.replaceChildren(...devices.map((d, i) => new Option(d.label || `Kamera ${i + 1}`, d.deviceId)));
+    const active = camera.ready ? camera.deviceId : camera.requestedId;
+    if (active && devices.some((d) => d.deviceId === active)) el.cameraSelect.value = active;
     el.cameraSelect.disabled = devices.length < 2 && camera.ready;
     el.cameraSelect.title = currentCameraLabel();
+    return devices;
   }
 
   camera.onEnded = () => {
     stopAuto();
     setViewportState("error", Object.assign(new Error("Kamera bağlantısı kəsildi."), { name: "NotFoundError" }));
     el.camMessageTitle.textContent = "Kamera bağlantısı kəsildi";
+    populateCameras();
   };
 
   /* ======================================================================
@@ -738,9 +804,11 @@
     el.scenarioTip.textContent = cur.tip;
     el.scenarioProgress.textContent = `${count} / ${cur.target} kadr`;
     el.scenarioDone.hidden = !g.isComplete(g.index);
-    el.btnPrevScenario.disabled = g.index === 0;
-    el.btnNextScenario.disabled = g.index === g.scenarios.length - 1;
-    el.btnResetProgress.hidden = !g.key || g.counts.every((c) => !c);
+    setDisabled(el.btnPrevScenario, g.index === 0, el.btnNextScenario);
+    setDisabled(el.btnNextScenario, g.index === g.scenarios.length - 1, el.btnPrevScenario);
+    const hideReset = !g.key || g.counts.every((c) => !c);
+    if (hideReset && document.activeElement === el.btnResetProgress) el.scenarioTitle.focus();
+    el.btnResetProgress.hidden = hideReset;
   }
 
   function setMode(mode) {
@@ -763,7 +831,8 @@
     setStat(el.statUploaded, uploader.uploaded);
     setStat(el.statQueue, uploader.pendingCount);
     setStat(el.statFailed, uploader.failedCount);
-    el.btnRetryAll.hidden = uploader.failedCount < 2;
+    el.btnRetryAll.hidden = uploader.failedCount < 1;
+    el.btnRetryAll.textContent = uploader.failedCount > 1 ? "Hamısını yenidən yüklə" : "Yenidən yüklə";
   }
 
   const rows = new Map(); // upload id → <li>
@@ -779,7 +848,7 @@
     } else if (item.status === "failed") {
       node = document.createElement("button");
       node.type = "button";
-      node.title = `${item.error || "Xəta"} — yenidən yükləmək üçün klikləyin`;
+      node.title = `${item.error || "Xəta"} — avtomatik təkrar cəhd ediləcək; indi yükləmək üçün klikləyin`;
       node.addEventListener("click", () => uploader.retry(item.id));
     } else {
       node = document.createElement("span");
@@ -838,17 +907,21 @@
         name.title = item.fileName;
         const meta = document.createElement("p");
         meta.className = "recent__meta";
-        meta.textContent = `${item.userName} / ${item.className} · ${U.clockTime(item.createdAt)}`;
         body.append(name, meta);
 
         row.append(img, body, document.createElement("span"));
         rows.set(item.id, row);
       }
 
+      row.querySelector(".recent__meta").textContent = `${item.userName} / ${item.className} · ${U.clockTime(item.createdAt)}`;
+
       const signature = `${item.status}:${item.attempts}:${item.fileId || ""}`;
       if (row.dataset.signature !== signature) {
         row.dataset.signature = signature;
-        row.lastElementChild.replaceWith(statusNode(item));
+        const hadFocus = row.contains(document.activeElement);
+        const next = statusNode(item);
+        row.lastElementChild.replaceWith(next);
+        if (hadFocus) (next.matches("a, button") ? next : el.uploadsList.closest("section").querySelector("h2")).focus();
       }
 
       if (el.uploadsList.children[index] !== row) {
@@ -857,21 +930,20 @@
     });
   }
 
-  uploader.onChange = (u) => {
+  uploader.onChange = () => {
     renderStats();
     renderRecent();
-    // Keep suggestions in sync with what is now on Drive.
-    let changed = false;
-    u.recent.forEach((item) => {
-      if (item.status === "success" && !item._remembered) {
-        item._remembered = true;
-        rememberInTree(item.userName, item.className);
-        changed = true;
-      }
-    });
-    if (changed) {
-      if (state.driveState !== "online") setDriveState("online");
-      renderSetup();
+  };
+
+  // Every successful upload, even one that already scrolled out of the recent list.
+  uploader.onUploaded = (item) => {
+    const added = rememberInTree(item.userName, item.className);
+    if (!state.treeLoaded) loadTree({ silent: true });
+    else if (state.driveState !== "online") setDriveState("online");
+    if (added) {
+      readDraft();
+      userCombo.refresh();
+      classCombo.refresh();
     }
   };
 
@@ -929,13 +1001,33 @@
   el.btnIntervalDown.addEventListener("click", () => setInterval_(state.interval - INTERVAL_STEP));
   el.btnIntervalUp.addEventListener("click", () => setInterval_(state.interval + INTERVAL_STEP));
   el.mirrorToggle.addEventListener("change", () => setMirror(el.mirrorToggle.checked));
+
+  // Arrow keys on a closed <select> fire "change" on every press (Windows) — debounce so
+  // stepping through cameras does not restart the stream each time.
+  let cameraChangeTimer = null;
   el.cameraSelect.addEventListener("change", () => {
-    el.cameraSelect.blur(); // give keyboard shortcuts back to the page
-    if (el.cameraSelect.value && el.cameraSelect.value !== camera.deviceId) startCamera(el.cameraSelect.value);
+    clearTimeout(cameraChangeTimer);
+    cameraChangeTimer = setTimeout(() => {
+      const value = el.cameraSelect.value;
+      const current = camera.ready ? camera.deviceId : camera.requestedId;
+      if (value && value !== current) startCamera(value);
+    }, 350);
   });
-  el.btnCameraRetry.addEventListener("click", () => startCamera(el.cameraSelect.value || null));
-  el.driveStatus.addEventListener("click", () => loadTree({ fresh: true }));
-  el.btnRetryAll.addEventListener("click", () => uploader.retryAllFailed());
+
+  el.btnCameraRetry.addEventListener("click", async () => {
+    // The selected camera may have been unplugged — fall back to the default one.
+    const devices = await camera.listDevices();
+    const value = el.cameraSelect.value;
+    startCamera(value && devices.some((d) => d.deviceId === value) ? value : null);
+  });
+
+  el.driveStatus.addEventListener("click", () => {
+    if (state.driveState !== "loading") loadTree({ fresh: true });
+  });
+  el.btnRetryAll.addEventListener("click", () => {
+    uploader.retryAllFailed();
+    el.uploadsList.closest("section").querySelector("h2").focus();
+  });
 
   el.modeWizard.addEventListener("change", () => setMode("wizard"));
   el.modeFree.addEventListener("change", () => setMode("free"));
@@ -953,16 +1045,16 @@
     toast(`“${state.cls}” üçün addım irəliləyişi sıfırlandı.`);
   });
 
+  el.video.addEventListener("resize", syncVideoGeometry); // e.g. a phone rotated mid-session
+
   if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
-    navigator.mediaDevices.addEventListener("devicechange", () => {
-      if (camera.ready) populateCameras();
-    });
+    navigator.mediaDevices.addEventListener("devicechange", () => populateCameras());
   }
 
   window.addEventListener("resize", () => guidance.invalidateOverlay());
 
   window.addEventListener("online", () => {
-    if (state.driveState === "offline") loadTree({ silent: true });
+    if (!state.treeLoaded || state.driveState === "offline") loadTree({ silent: true });
   });
   window.addEventListener("offline", () => toast("İnternet bağlantısı kəsildi. Kadrlar növbədə gözləyəcək.", "warn"));
 
@@ -977,24 +1069,37 @@
     }
   });
 
-  // Keyboard shortcuts — ignored while typing and with modifier keys (Ctrl+C etc.).
+  // After a mouse click, give focus back to the page so Space / C keep working as
+  // shortcuts. Keyboard activation (click.detail === 0) keeps focus where it is.
+  document.addEventListener("click", (e) => {
+    if (e.detail === 0) return;
+    const control = e.target instanceof Element && e.target.closest("button, a, label, input[type='checkbox'], input[type='radio']");
+    if (!control || control.closest(".combo")) return;
+    setTimeout(() => {
+      const active = document.activeElement;
+      if (active && (active === control || control.contains(active)) && !active.matches("input[type='text'], select")) {
+        active.blur();
+      }
+    }, 0);
+  });
+
+  // Keyboard shortcuts. Never while typing, never with modifier keys (Ctrl+C etc.) and
+  // never for Space on a focused control — Space must still press buttons / toggle switches.
+  const INTERACTIVE = "button, a[href], input, select, textarea, label, summary, [role='option'], [contenteditable='true']";
+  const TYPING = "input:not([type='checkbox']):not([type='radio']), textarea, select, [contenteditable='true']";
+
   window.addEventListener("keydown", (e) => {
     if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
     const target = e.target instanceof Element ? e.target : null;
-    if (target && target.closest('input:not([type="checkbox"]):not([type="radio"]), textarea, select, [contenteditable="true"]')) return;
-    const onControl = target && target.closest("button, a, input, label");
+    if (target && target.closest(TYPING)) return;
 
     switch (e.code) {
       case "Space":
-        e.preventDefault(); // also stops a focused button from being "clicked" by Space
+        if (target && target.closest(INTERACTIVE)) return;
+        e.preventDefault();
         if (!e.repeat) toggleAuto();
         break;
       case "KeyC":
-        e.preventDefault();
-        if (!e.repeat) capture();
-        break;
-      case "Enter":
-        if (onControl) return; // let Enter activate the focused button/link
         e.preventDefault();
         if (!e.repeat) capture();
         break;
@@ -1028,7 +1133,7 @@
     setInterval_(state.interval);
     buildSteps();
     setMode(U.store.get("lens.mode", "wizard"));
-    syncTarget();
+    commitUser({ silent: true });
     renderRunState();
     renderStats();
     renderRecent();

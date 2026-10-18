@@ -6,9 +6,16 @@
 
   const MAX_NAME_LENGTH = 60;
 
+  // Case folding that also handles Azerbaijani/Turkish "İ" ("İ".toLowerCase() adds U+0307).
+  // Same as fold_() in google_drive_script.js.
+  function fold(value) {
+    return String(value == null ? "" : value).normalize("NFC").replace(/İ/g, "i").toLowerCase();
+  }
+
   // Same rules as cleanName_() in google_drive_script.js.
   function normalizeName(value) {
     return String(value == null ? "" : value)
+      .normalize("NFC")
       .replace(/[\u0000-\u001f\u007f/\\]/g, " ")
       .replace(/\s+/g, " ")
       .trim()
@@ -18,11 +25,16 @@
 
   // Same rules as cleanClass_(): class folders are lowercase with underscores.
   function normalizeClass(value) {
-    return normalizeName(value).toLowerCase().replace(/ /g, "_");
+    return fold(normalizeName(value)).replace(/ /g, "_");
   }
 
-  function sameName(a, b) {
-    return String(a).toLowerCase() === String(b).toLowerCase();
+  // Comparison keys — two names/classes are "the same folder" when their keys match.
+  function nameKey(value) {
+    return fold(normalizeName(value));
+  }
+
+  function classKey(value) {
+    return normalizeClass(value);
   }
 
   function fileSafe(value) {
@@ -84,9 +96,11 @@
   };
 
   window.LensUtils = {
+    fold,
     normalizeName,
     normalizeClass,
-    sameName,
+    nameKey,
+    classKey,
     fileSafe,
     compareNames,
     fileStamp,

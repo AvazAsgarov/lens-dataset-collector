@@ -2,7 +2,7 @@
 <html lang="az">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Lens Dataset Collector</title>
   <meta name="description" content="Kompüter görməsi modelləri üçün şəkil toplama aləti. Şəkillər Ad / Sinif qovluqları ilə avtomatik Google Drive-a yüklənir." />
   <meta name="theme-color" content="#f7f6f3" media="(prefers-color-scheme: light)" />
@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" />
-  <link rel="stylesheet" href="css/style.css?v=2.0.0" />
+  <link rel="stylesheet" href="css/style.css?v=2.0.1" />
 </head>
 <body>
   <svg class="sprite" aria-hidden="true" focusable="false">
@@ -74,7 +74,7 @@
         </div>
         <div class="countdown" aria-hidden="true"><span id="countdown-bar"></span></div>
 
-        <div class="viewport__message" id="camera-message">
+        <div class="viewport__message" id="camera-message" role="status" aria-live="polite">
           <span class="viewport__icon" id="camera-message-icon" aria-hidden="true"><span class="spinner spinner--light"></span></span>
           <p class="viewport__title" id="camera-message-title">Kamera açılır</p>
           <p class="viewport__text" id="camera-message-text">Brauzer kamera icazəsi istəsə, “İcazə ver” seçin.</p>
@@ -151,8 +151,8 @@
             <input id="class-input" class="input input--mono" type="text" placeholder="məs. mouse" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="60" aria-describedby="class-hint" />
             <ul id="class-list" class="combo__list" aria-label="Mövcud siniflər" hidden></ul>
           </div>
-          <div class="chips" id="class-chips" role="group" aria-label="Sürətli seçim" hidden></div>
           <p class="field__hint" id="class-hint">Şəkildə nə olduğunu yazın: mouse, notebook, phone…</p>
+          <div class="chips" id="class-chips" role="group" aria-label="Sürətli seçim" hidden></div>
         </div>
 
         <div class="dest">
@@ -176,7 +176,7 @@
             <span class="eyebrow" id="scenario-step">Addım 1 / 5</span>
             <span class="eyebrow" id="scenario-total">0 / 55</span>
           </div>
-          <h3 class="scenario__title" id="scenario-title"></h3>
+          <h3 class="scenario__title" id="scenario-title" tabindex="-1"></h3>
           <p class="scenario__desc" id="scenario-desc"></p>
           <p class="scenario__tip">
             <svg class="icon icon--sm" aria-hidden="true"><use href="#i-info" /></svg>
@@ -223,8 +223,8 @@
 
       <section class="card reveal" style="--i: 4" aria-labelledby="recent-title">
         <header class="card__head">
-          <h2 class="card__title" id="recent-title">Son kadrlar</h2>
-          <button type="button" class="link-btn link-btn--danger" id="btn-retry-all" hidden>Hamısını yenidən yüklə</button>
+          <h2 class="card__title" id="recent-title" tabindex="-1">Son kadrlar</h2>
+          <button type="button" class="link-btn link-btn--danger" id="btn-retry-all" hidden>Yenidən yüklə</button>
         </header>
         <ul class="recent" id="uploads-list"></ul>
         <div class="empty" id="uploads-empty">
@@ -238,11 +238,11 @@
 
   <div class="toasts" id="toast-region" aria-live="polite" aria-atomic="false"></div>
 
-  <script src="js/utils.js?v=2.0.0" defer></script>
-  <script src="js/camera.js?v=2.0.0" defer></script>
-  <script src="js/guidance.js?v=2.0.0" defer></script>
-  <script src="js/uploader.js?v=2.0.0" defer></script>
-  <script src="js/combobox.js?v=2.0.0" defer></script>
-  <script src="js/app.js?v=2.0.0" defer></script>
+  <script src="js/utils.js?v=2.0.1" defer></script>
+  <script src="js/camera.js?v=2.0.1" defer></script>
+  <script src="js/guidance.js?v=2.0.1" defer></script>
+  <script src="js/uploader.js?v=2.0.1" defer></script>
+  <script src="js/combobox.js?v=2.0.1" defer></script>
+  <script src="js/app.js?v=2.0.1" defer></script>
 </body>
 </html>

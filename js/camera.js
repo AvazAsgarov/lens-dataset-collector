@@ -8,6 +8,7 @@ class CameraController {
     this.deviceId = null;
     this.mirror = true;
     this.seq = 0;
+    this.requestedId = null; // last device asked for (may still be opening)
     this.onEnded = null; // () => void — camera unplugged or stopped by the OS
 
     this.frameCanvas = document.createElement("canvas");
@@ -61,6 +62,7 @@ class CameraController {
     // A newer start() call supersedes this one (rapid camera switching, double retry).
     const seq = ++this.seq;
     const previous = this.deviceId;
+    this.requestedId = deviceId;
     this.stop();
     try {
       await this.open(deviceId, seq);
@@ -68,10 +70,13 @@ class CameraController {
       if (err.name !== "SupersededError" && seq === this.seq && deviceId && previous && previous !== deviceId) {
         try {
           await this.open(previous, seq);
+          this.requestedId = previous;
         } catch (restoreErr) {
           console.warn("[camera] could not restore previous device:", restoreErr);
         }
       }
+      // A newer request owns the camera now — its outcome decides the UI, not this error.
+      this.assertCurrent(seq, null);
       throw err;
     }
   }

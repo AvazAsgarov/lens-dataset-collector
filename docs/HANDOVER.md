@@ -75,12 +75,13 @@ Details: [ARCHITECTURE.md](ARCHITECTURE.md).
 ## 4. Invariants — do not break these
 
 1. **`Content-Type: text/plain`.** Apps Script web apps do not answer CORS preflight requests, so the client posts JSON as `text/plain;charset=utf-8`. Do not switch to `application/json`.
-2. **Same normalisation on both sides.** `normalizeName` / `normalizeClass` in `js/utils.js` must stay identical to `cleanName_` / `cleanClass_` in `google_drive_script.js`. Names: trimmed, single spaces, no `/` `\` or control characters, max 60 characters, casing kept. Classes: the same, then lowercased with spaces turned into `_`.
+2. **Same normalisation on both sides.** `normalizeName` / `normalizeClass` / `nameKey` / `fold` in `js/utils.js` must stay identical to `cleanName_` / `cleanClass_` / `nameKey_` / `fold_` in `google_drive_script.js`. Names: NFC, trimmed, single spaces, no `/` `\` or control characters, max 60 characters, casing kept. Classes: the same, then case-folded (Azerbaijani `İ` → `i` first) with spaces turned into `_`. Folders are matched by these keys, so `LEYLA`, `leyla` and a hand-made `Leyla ` are one folder.
 3. **No duplicate folders.** Lookups are case-insensitive and ignore trashed folders. Creation happens inside `LockService.getScriptLock()`. If old duplicates exist, the oldest folder wins.
-4. **Uploads are idempotent by file name.** A retried POST whose file already exists returns the existing file. File names therefore carry a random suffix and must stay unique.
-5. **Clean frames only.** The overlay (grid, corner marks, HUD) is drawn on a separate canvas. `CameraController.capture()` reads the raw `<video>` frame.
-6. **Mirror.** When mirror is on (the default), the saved frame is flipped too, to match `cv2.flip(frame, 1)` in the reference inference pipeline. The state is recorded in each file's metadata (`mirror`).
-7. **Backward compatibility.** The backend still accepts v1 payloads without `className` (it saves into the person folder), and `doGet` still returns the v1 `folders` array.
+4. **Uploads are idempotent by file name.** A retried POST whose file already exists (or is still being written by an earlier request) returns that file. File names therefore carry a random suffix and must stay unique.
+5. **Capture uses the committed target only.** Live typing changes the preview, not where frames go; editing during auto-capture stops it.
+6. **Clean frames only.** The overlay (grid, corner marks, HUD) is drawn on a separate canvas. `CameraController.capture()` reads the raw `<video>` frame.
+7. **Mirror.** When mirror is on (the default), the saved frame is flipped too, to match `cv2.flip(frame, 1)` in the reference inference pipeline. The state is recorded in each file's metadata (`mirror`).
+8. **Backward compatibility.** The backend still accepts v1 payloads without `className` (it saves into the person folder), and `doGet` still returns the v1 `folders` array.
 
 ---
 

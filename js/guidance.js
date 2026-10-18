@@ -110,10 +110,13 @@ class GuidanceSystem {
   record() {
     if (this.mode !== "wizard") return null;
     const wasComplete = this.allComplete;
+    const stepWasComplete = this.isComplete(this.index);
     this.counts[this.index] = (this.counts[this.index] || 0) + 1;
 
+    // Advance only on the capture that completes the step — a user who went back to a
+    // finished step to add more frames stays there.
     let result = null;
-    if (this.isComplete(this.index)) {
+    if (!stepWasComplete && this.isComplete(this.index)) {
       const next = this.nextIncomplete();
       if (next !== -1 && next !== this.index) {
         this.index = next;

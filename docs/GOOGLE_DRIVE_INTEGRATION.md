@@ -53,9 +53,9 @@ The client must send `Content-Type: text/plain;charset=utf-8`. Apps Script does 
 | Only JPEG data (`FF D8 FF` signature), max 10 MB | `decodeJpeg_` |
 | Names: no `/`, `\` or control characters, collapsed whitespace, max 60 characters | `cleanName_`, `cleanClass_` |
 | File names: unsafe characters replaced, `.jpg` enforced, max 150 characters | `cleanFileName_` |
-| Case-insensitive find-or-create; trashed folders ignored; oldest duplicate wins | `findOrCreateFolder_`, `findChildFolder_` |
+| Find-or-create by normalised key (case, extra spaces and Azerbaijani `İ` ignored); trashed folders ignored; oldest duplicate wins | `findOrCreateFolder_`, `nameKey_`, `cleanClass_` |
 | Concurrent first uploads cannot create duplicate folders | `LockService.getScriptLock()` |
-| A retried upload with the same file name does not create a duplicate | `getFilesByName` check in `doPost` |
+| A retried upload with the same file name does not create a duplicate, even while the first request is still running | CacheService claim (`pending` → file ID) plus a `getFilesByName` check in `doPost` |
 | At most 200 new folders per hour | `countFolderCreation_` |
 | Only whitelisted metadata keys are stored | `buildMeta_` |
 

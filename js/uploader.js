@@ -11,7 +11,8 @@ class DriveUploader {
     this.concurrency = options.concurrency || 2;
     this.maxAttempts = options.maxAttempts || 5;
     this.maxRecent = options.maxRecent || 12;
-    this.timeoutMs = options.timeoutMs || 60000;
+    this.timeoutMs = options.timeoutMs || 90000;
+    this.failedRetryMs = options.failedRetryMs || 60000;
 
     this.queue = []; // items not yet uploaded (pending, uploading, failed)
     this.recent = []; // newest first, for the UI
@@ -19,8 +20,10 @@ class DriveUploader {
     this.uploaded = 0;
     this.timer = null;
     this.onChange = null; // (uploader) => void
+    this.onUploaded = null; // (item, response) => void — once per successful upload
 
-    window.addEventListener("online", () => this.pump());
+    // Connectivity is back: retry everything right away, including failed items.
+    window.addEventListener("online", () => this.retryAllFailed());
   }
 
   /* ---------- Folder tree ---------- */
@@ -102,19 +105,23 @@ class DriveUploader {
     this.emit();
     this.pump();
   }
-
   retryAllFailed() {
     this.queue.forEach((item) => {
-      if (item.status !== "failed") return;
-      item.status = "pending";
-      item.attempts = 0;
-      item.retryAt = 0;
-      item.error = "";
+      if (item.status === "failed") {
+        item.status = "pending";
+        item.attempts = 0;
+        item.error = "";
+      }
+      if (item.status === "pending") item.retryAt = 0;
     });
     this.emit();
     this.pump();
   }
 
+  /**
+   * Starts uploads up to the concurrency limit. Failed items are not abandoned:
+   * they are retried automatically every failedRetryMs (and immediately on "online").
+   */
   pump() {
     clearTimeout(this.timer);
     this.timer = null;
@@ -126,11 +133,14 @@ class DriveUploader {
     const now = Date.now();
     let nextDue = Infinity;
     for (const item of this.queue) {
-      if (this.active >= this.concurrency) break;
-      if (item.status !== "pending") continue;
+      if (item.status !== "pending" && item.status !== "failed") continue;
       if (item.retryAt > now) {
         nextDue = Math.min(nextDue, item.retryAt);
         continue;
+      }
+      if (this.active >= this.concurrency) {
+        nextDue = Math.min(nextDue, now + 500);
+        break;
       }
       this.upload(item);
     }
@@ -141,8 +151,9 @@ class DriveUploader {
 
   async upload(item) {
     this.active++;
+    const wasFailed = item.status === "failed";
     item.status = "uploading";
-    item.attempts++;
+    item.attempts = wasFailed ? this.maxAttempts : item.attempts + 1;
     this.emit();
 
     try {
@@ -161,8 +172,12 @@ class DriveUploader {
       item.fileId = res.fileId || null;
       item.error = "";
       item.payload = null; // free the full-size image
+      // The server's canonical folder names (existing folder spelling wins).
+      if (res.userName) item.userName = res.userName;
+      if (res.className) item.className = res.className;
       this.queue = this.queue.filter((q) => q !== item);
       this.uploaded++;
+      if (typeof this.onUploaded === "function") this.onUploaded(item, res);
     } catch (err) {
       item.error = err && err.message ? err.message : String(err);
       if (navigator.onLine === false) {
@@ -172,6 +187,7 @@ class DriveUploader {
         item.retryAt = 0;
       } else if (item.attempts >= this.maxAttempts) {
         item.status = "failed";
+        item.retryAt = Date.now() + this.failedRetryMs;
         console.warn(`[uploader] ${item.fileName} failed after ${item.attempts} attempts:`, item.error);
       } else {
         item.status = "pending";

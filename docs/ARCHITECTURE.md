@@ -69,7 +69,8 @@ Scripts load in this order (all `defer`): `utils.js`, `camera.js`, `guidance.js`
 ### `uploader.js` — `DriveUploader`
 - `fetchTree({ fresh })` reads `GET ?action=tree` and also accepts the v1 `{ folders }` response.
 - Queue states: `pending → uploading → success | pending (retry) | failed`.
-- Up to 3 uploads run in parallel. Retries back off at 2, 4, 8 and 16 s, and an item is marked `failed` after 5 attempts. Being offline does not use up an attempt; the queue resumes on the `online` event. `retry(id)` and `retryAllFailed()` handle manual retries.
+- Up to 3 uploads run in parallel. Retries back off at 2, 4, 8 and 16 s, and an item is marked `failed` after 5 attempts. Failed items are not abandoned: they are retried automatically every 60 s and immediately on the `online` event. Being offline does not use up an attempt. `retry(id)` and `retryAllFailed()` handle manual retries.
+- `onUploaded(item, response)` fires once per success with the server's canonical `userName` / `className`, so the app can update its folder tree even for items that have left the recent list.
 - The full-size image is released once an upload succeeds. `backlog` counts every frame not yet on Drive.
 
 ### `combobox.js` — `Combobox`
@@ -77,10 +78,11 @@ Scripts load in this order (all `defer`): `utils.js`, `camera.js`, `guidance.js`
 - Callbacks: `onInput` (live typing), `onCommit` (blur, Enter, pick) and `onEnter`.
 
 ### `app.js` — coordinator
-- Derives `state.user` / `state.cls` from the inputs while the user types, snapping to an existing folder's spelling (`leyla` → `Leyla`).
+- Keeps two targets. The **draft** (`state.draft`, updated while typing) drives the hints, chips and destination preview. The **committed** target (`state.user` / `state.cls`, updated on blur, Enter or picking a suggestion) is the only one `capture()` uses. Editing either field during auto-capture stops it, so half-typed text can never become a folder name.
+- Snaps to an existing folder's spelling (`leyla` → `Leyla`); a class snaps only to the person's own class folders, matching how the server resolves it.
 - Renders the destination path, the hints that say whether a folder is new or existing, the class chips, the scenario panel, the stats and the recent captures (keyed DOM updates, so thumbnails are never re-decoded).
 - Auto-capture runs on `requestAnimationFrame`. It stops when the tab is hidden, a field is cleared, the camera fails or more than 40 frames wait in the queue.
-- Keyboard shortcuts are ignored while typing and when a modifier key is held. Key auto-repeat cannot trigger a burst of captures.
+- Keyboard shortcuts (`Space`, `C`, `W`, `S`, `M`) are ignored while typing and when a modifier key is held. `Space` is left to focused buttons, switches and radios so they stay keyboard-operable, and mouse-clicked controls hand focus back to the page so the shortcuts keep working. Key auto-repeat cannot trigger a burst of captures.
 - `beforeunload` warns while frames are still waiting to upload.
 
 ---

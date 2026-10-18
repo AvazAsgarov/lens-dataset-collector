@@ -34,7 +34,7 @@ Lens_Dataset/
 | Qısa yol | Əməliyyat |
 |---|---|
 | `Space` | Avtomatik çəkilişi başlat / dayandır |
-| `C` və ya `Enter` | Tək kadr |
+| `C` | Tək kadr |
 | `W` / `S` | İntervalı 0.5 s artır / azalt (0.5–10 s) |
 | `M` | Güzgü rejimini aç / bağla |
 
@@ -46,7 +46,8 @@ Lens_Dataset/
 - **Hər şəklin metadatası.** Fayl adında sinif və ad var; Drive-da faylın təsvirində (description) JSON metadata saxlanılır: çəkiliş vaxtı, ssenari, güzgü, ölçü, kamera, işıq səviyyəsi.
 - **Addımlı bələdçi.** 5 ssenari (düz, bucaqlar, məsafə, tutuş, qarışıq mühit — cəmi 55 kadr). İrəliləyiş hər **ad + sinif** üçün ayrıca brauzerdə yadda saxlanılır.
 - **Canlı işıq yoxlaması** və rule-of-thirds vizir xətləri (saxlanılan şəkildə görünmür).
-- **Etibarlı yükləmə növbəsi.** 3 paralel yükləmə, avtomatik təkrar cəhdlər (2→4→8→16 s), internet kəsiləndə gözləmə, uğursuz kadrlar üçün “Yenidən” düyməsi, növbədə 40 kadr yığılanda çəkilişin dayanması və səhifə bağlananda xəbərdarlıq.
+- **Etibarlı yükləmə növbəsi.** 3 paralel yükləmə, avtomatik təkrar cəhdlər (2→4→8→16 s), internet kəsiləndə gözləmə, uğursuz kadrların hər 60 saniyədən bir avtomatik (və ya “Yenidən” düyməsi ilə dərhal) təkrar yüklənməsi, növbədə 40 kadr yığılanda çəkilişin dayanması və səhifə bağlananda xəbərdarlıq.
+- **Təhlükəsiz redaktə.** Ad və ya sinif yazılarkən avtomatik çəkiliş dayanır; kadrlar yalnız təsdiqlənmiş (Enter / sahədən çıxış / siyahıdan seçim) qovluğa gedir.
 - **Minimalist interfeys** — açıq və tünd mövzu, klaviatura və ekran oxuyucu dəstəyi, mobil uyğunluq.
 
 ---
