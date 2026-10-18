@@ -372,7 +372,9 @@ kbd {
   --ar: 1.7778;
   --chrome: 236px; /* height taken by the top bar, controls and gaps */
   position: relative;
-  width: min(100%, max(calc((100dvh - var(--chrome)) * var(--ar)), calc(200px * var(--ar))));
+  width: min(100%, max(calc((100vh - var(--chrome)) * var(--ar)), calc(200px * var(--ar))));
+  /* svh: stays put when a mobile browser toolbar shows or hides */
+  width: min(100%, max(calc((100svh - var(--chrome)) * var(--ar)), calc(200px * var(--ar))));
   aspect-ratio: var(--ar);
   margin: 0 auto;
   border-radius: var(--radius-lg);

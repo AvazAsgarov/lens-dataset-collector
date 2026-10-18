@@ -53,8 +53,13 @@ class Combobox {
     this.committed = value;
   }
 
+  // Re-filter the open list (e.g. new folders arrived) without losing the highlighted option.
   refresh() {
-    if (this.isOpen) this.open();
+    if (!this.isOpen) return;
+    const activeValue = this.activeIndex >= 0 ? this.options[this.activeIndex] : null;
+    this.open();
+    const i = activeValue === null ? -1 : this.options.indexOf(activeValue);
+    if (i >= 0) this.setActive(i);
   }
 
   filter() {
@@ -120,12 +125,15 @@ class Combobox {
     if (!this.isOpen) this.open();
     if (!this.isOpen || !this.options.length) return;
     const n = this.options.length;
-    this.activeIndex = this.activeIndex === -1 ? (delta > 0 ? 0 : n - 1) : (this.activeIndex + delta + n) % n;
+    this.setActive(this.activeIndex === -1 ? (delta > 0 ? 0 : n - 1) : (this.activeIndex + delta + n) % n);
+  }
 
+  setActive(index) {
+    this.activeIndex = index;
     Array.from(this.list.children).forEach((li, i) => {
-      li.setAttribute("aria-selected", String(i === this.activeIndex));
+      li.setAttribute("aria-selected", String(i === index));
     });
-    const active = this.list.children[this.activeIndex];
+    const active = this.list.children[index];
     this.input.setAttribute("aria-activedescendant", active.id);
     active.scrollIntoView({ block: "nearest" });
   }

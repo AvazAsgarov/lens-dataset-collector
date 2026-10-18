@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" />
-  <link rel="stylesheet" href="css/style.css?v=2.0.1" />
+  <link rel="stylesheet" href="css/style.css?v=2.0.2" />
 </head>
 <body>
   <svg class="sprite" aria-hidden="true" focusable="false">
@@ -74,7 +74,7 @@
         </div>
         <div class="countdown" aria-hidden="true"><span id="countdown-bar"></span></div>
 
-        <div class="viewport__message" id="camera-message" role="status" aria-live="polite">
+        <div class="viewport__message" id="camera-message">
           <span class="viewport__icon" id="camera-message-icon" aria-hidden="true"><span class="spinner spinner--light"></span></span>
           <p class="viewport__title" id="camera-message-title">Kamera açılır</p>
           <p class="viewport__text" id="camera-message-text">Brauzer kamera icazəsi istəsə, “İcazə ver” seçin.</p>
@@ -84,6 +84,8 @@
           </button>
         </div>
       </div>
+
+      <p class="sr-only" id="camera-live" role="status" aria-live="polite"></p>
 
       <div class="controls">
         <div class="controls__primary">
@@ -238,11 +240,11 @@
 
   <div class="toasts" id="toast-region" aria-live="polite" aria-atomic="false"></div>
 
-  <script src="js/utils.js?v=2.0.1" defer></script>
-  <script src="js/camera.js?v=2.0.1" defer></script>
-  <script src="js/guidance.js?v=2.0.1" defer></script>
-  <script src="js/uploader.js?v=2.0.1" defer></script>
-  <script src="js/combobox.js?v=2.0.1" defer></script>
-  <script src="js/app.js?v=2.0.1" defer></script>
+  <script src="js/utils.js?v=2.0.2" defer></script>
+  <script src="js/camera.js?v=2.0.2" defer></script>
+  <script src="js/guidance.js?v=2.0.2" defer></script>
+  <script src="js/uploader.js?v=2.0.2" defer></script>
+  <script src="js/combobox.js?v=2.0.2" defer></script>
+  <script src="js/app.js?v=2.0.2" defer></script>
 </body>
 </html>

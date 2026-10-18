@@ -19,7 +19,7 @@ var API_VERSION = 2;
 var MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 var MAX_NEW_FOLDERS_PER_HOUR = 200;
 var FILE_CLAIM_TTL = 6 * 60 * 60; // saniyə
-var PENDING_CLAIM_TTL = 120; // saniyə — çökmüş sorğunun işarəsi uzun qalmasın
+var PENDING_CLAIM_TTL = 400; // saniyə — Apps Script-in maksimal icra müddətindən (360 s) uzun
 var MAX_NAME_LENGTH = 60;
 var MAX_FILE_NAME_LENGTH = 150;
 var FOLDER_CACHE_TTL = 6 * 60 * 60; // saniyə
@@ -236,7 +236,9 @@ function fileFromClaim_(cache, claimKey) {
     Utilities.sleep(1000);
     value = cache.get(claimKey);
   }
-  if (!value || value === "pending") return null;
+  // İlk sorğu hələ də işləyir — ikinci nüsxə yaratmırıq; klient bir az sonra yenidən cəhd edəcək.
+  if (value === "pending") throw new Error("Bu kadr hələ yüklənir, bir az sonra yenidən cəhd olunacaq");
+  if (!value) return null;
   try {
     var f = DriveApp.getFileById(value);
     if (!f.isTrashed()) return f;

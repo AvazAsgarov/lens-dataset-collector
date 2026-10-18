@@ -1,7 +1,7 @@
 # Handover — Lens Dataset Collector
 
 > **Audience:** the next engineer or AI agent working on this project.
-> **Last updated:** 2026-10-18 (v2.0.0)
+> **Last updated:** 2026-10-18 (v2.0.2)
 > **Owner:** Avaz Asgarov (`AvazAsgarov`)
 
 ---
@@ -34,7 +34,7 @@ It replaced the desktop OpenCV collector in the reference repo (`lkazimzadehh/le
 | Drive root folder (`Lens_Dataset`) | `1PIz4lSXEC4cz7PRve9MRHmyTAh8n4wVR` |
 | Apps Script web app (`/exec`) | `https://script.google.com/macros/s/AKfycbyFU3KixOVpS9I3Iz1w_PiV47tRwiernHbNyOuYSBSo_yILrw_ce6YmDssAfGUlhUak/exec` |
 | Apps Script project | "Untitled project" in the **AI Factory** Google account (the account that owns `Lens_Dataset`; in the owner's Chrome it is `authuser=2`) |
-| Active deployment | Version 4 — "v2: Ad/Sinif qovluq strukturu" (2026-10-18) |
+| Active deployment | Version 6 — "v2.0.2: dublikat qoruması (pending claim)" (2026-10-18) |
 
 Never commit tokens or passwords to this public repository.
 

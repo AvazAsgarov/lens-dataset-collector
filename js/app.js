@@ -31,6 +31,7 @@
     camMessageIcon: $("camera-message-icon"),
     camMessageTitle: $("camera-message-title"),
     camMessageText: $("camera-message-text"),
+    cameraLive: $("camera-live"),
     btnCameraRetry: $("btn-camera-retry"),
 
     btnToggle: $("btn-toggle-auto"),
@@ -247,10 +248,7 @@
         toast("Google Drive ilə əlaqə qurulmadı. Kadrlar növbədə saxlanılır və bağlantı bərpa olunanda yüklənəcək.", "error", 6500);
       }
     }
-    // Show the canonical spelling of existing folders (e.g. "leyla" → "Leyla"),
-    // without touching a field that is being typed in.
-    if (document.activeElement !== el.userInput) commitUser({ silent: true });
-    else commitClass({ silent: true });
+    recommit();
     userCombo.refresh();
     classCombo.refresh();
   }
@@ -323,10 +321,19 @@
     if (user) clearFieldError(el.userInput, false);
     if (cls) clearFieldError(el.classInput, false);
 
-    if (state.running && (user !== state.user || cls !== state.cls)) {
+    // Only real edits stop auto-capture — not a re-resolution after the folder tree changed.
+    const edited = el.userInput.value !== userCombo.committed || el.classInput.value !== classCombo.committed;
+    if (state.running && edited) {
       stopAuto("Ad və ya sinif dəyişdirilir — avtomatik çəkiliş dayandırıldı. Yeni dəyəri təsdiqləyib yenidən başladın.");
     }
     renderSetup();
+  }
+
+  // The folder tree changed: re-resolve the committed values (e.g. "leyla" → "Leyla")
+  // without touching a field the user is typing in.
+  function recommit() {
+    if (document.activeElement !== el.userInput) commitUser({ silent: true });
+    else commitClass({ silent: true });
   }
 
   function commitUser({ silent = false } = {}) {
@@ -639,8 +646,22 @@
 
   // Disables a control; if it had focus, focus moves to `fallback` instead of <body>.
   function setDisabled(control, disabled, fallback) {
-    if (disabled && document.activeElement === control && fallback && !fallback.disabled) fallback.focus();
+    if (disabled) releaseFocus(control, fallback);
     control.disabled = disabled;
+  }
+
+  // Before a focused control is disabled or hidden: keyboard users continue on `fallback`,
+  // mouse users get focus back on the page (so Space / C keep working as shortcuts).
+  function releaseFocus(control, fallback) {
+    if (document.activeElement !== control) return;
+    let keyboard = false;
+    try {
+      keyboard = control.matches(":focus-visible");
+    } catch (err) {
+      keyboard = true; // very old browsers: keep the previous, keyboard-friendly behaviour
+    }
+    if (keyboard && fallback && !fallback.disabled && !fallback.hidden) fallback.focus();
+    else control.blur();
   }
 
   function setInterval_(v) {
@@ -682,8 +703,14 @@
     }
   }
 
+  function announceCamera(text) {
+    // Written on the next frame so screen readers notice the change in an already-rendered region.
+    requestAnimationFrame(() => (el.cameraLive.textContent = text));
+  }
+
   function setViewportState(next, err) {
     el.viewport.dataset.state = next;
+    if (next === "ready") announceCamera("Kamera hazırdır.");
     if (next === "loading") {
       el.camMessageIcon.replaceChildren(Object.assign(document.createElement("span"), { className: "spinner spinner--light" }));
       el.camMessageTitle.textContent = "Kamera açılır";
@@ -695,6 +722,7 @@
       el.camMessageTitle.textContent = title;
       el.camMessageText.textContent = text;
       el.btnCameraRetry.hidden = false;
+      announceCamera(`${title}. ${text}`);
     }
     renderControls();
   }
@@ -753,6 +781,7 @@
     stopAuto();
     setViewportState("error", Object.assign(new Error("Kamera bağlantısı kəsildi."), { name: "NotFoundError" }));
     el.camMessageTitle.textContent = "Kamera bağlantısı kəsildi";
+    announceCamera("Kamera bağlantısı kəsildi. Veb-kameranı yenidən qoşub “Yenidən cəhd et” düyməsini basın.");
     populateCameras();
   };
 
@@ -807,7 +836,7 @@
     setDisabled(el.btnPrevScenario, g.index === 0, el.btnNextScenario);
     setDisabled(el.btnNextScenario, g.index === g.scenarios.length - 1, el.btnPrevScenario);
     const hideReset = !g.key || g.counts.every((c) => !c);
-    if (hideReset && document.activeElement === el.btnResetProgress) el.scenarioTitle.focus();
+    if (hideReset) releaseFocus(el.btnResetProgress, el.scenarioTitle);
     el.btnResetProgress.hidden = hideReset;
   }
 
@@ -921,7 +950,10 @@
         const hadFocus = row.contains(document.activeElement);
         const next = statusNode(item);
         row.lastElementChild.replaceWith(next);
-        if (hadFocus) (next.matches("a, button") ? next : el.uploadsList.closest("section").querySelector("h2")).focus();
+        if (hadFocus) {
+          if (!next.matches("a, button")) next.tabIndex = -1;
+          next.focus({ preventScroll: true });
+        }
       }
 
       if (el.uploadsList.children[index] !== row) {
@@ -938,10 +970,13 @@
   // Every successful upload, even one that already scrolled out of the recent list.
   uploader.onUploaded = (item) => {
     const added = rememberInTree(item.userName, item.className);
-    if (!state.treeLoaded) loadTree({ silent: true });
-    else if (state.driveState !== "online") setDriveState("online");
+    if (!state.treeLoaded) {
+      if (state.driveState !== "loading") loadTree({ silent: true });
+    } else if (state.driveState !== "online") {
+      setDriveState("online");
+    }
     if (added) {
-      readDraft();
+      recommit();
       userCombo.refresh();
       classCombo.refresh();
     }
@@ -1005,7 +1040,11 @@
   // Arrow keys on a closed <select> fire "change" on every press (Windows) — debounce so
   // stepping through cameras does not restart the stream each time.
   let cameraChangeTimer = null;
+  let cameraPickedWithPointer = false;
+  el.cameraSelect.addEventListener("pointerdown", () => (cameraPickedWithPointer = true));
+  el.cameraSelect.addEventListener("keydown", () => (cameraPickedWithPointer = false));
   el.cameraSelect.addEventListener("change", () => {
+    if (cameraPickedWithPointer) el.cameraSelect.blur();
     clearTimeout(cameraChangeTimer);
     cameraChangeTimer = setTimeout(() => {
       const value = el.cameraSelect.value;
@@ -1046,6 +1085,14 @@
   });
 
   el.video.addEventListener("resize", syncVideoGeometry); // e.g. a phone rotated mid-session
+
+  // Combobox skips onCommit when the text is unchanged; the tree may still have changed how it resolves.
+  el.userInput.addEventListener("blur", () => {
+    if (resolveUser(el.userInput.value) !== state.user) commitUser({ silent: true });
+  });
+  el.classInput.addEventListener("blur", () => {
+    if (resolveClass(el.classInput.value, state.user) !== state.cls) commitClass({ silent: true });
+  });
 
   if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
     navigator.mediaDevices.addEventListener("devicechange", () => populateCameras());
